@@ -241,7 +241,10 @@ export default function MobileApp() {
 
   // Rendering only replaces editable text. Imported pixel artwork is never inferred as text.
   useEffect(() => {
-    if (route !== "text" || !ready || !active.text) return;
+    if (route !== "text" || !ready || !active.text) {
+      setRendering(false);
+      return;
+    }
     if (
       draft === active.text.value &&
       face === active.text.face &&
@@ -263,10 +266,8 @@ export default function MobileApp() {
           update(id, (m) => ({
             ...m,
             name: draft.trim().slice(0, 20) || "Untitled",
-            width: Math.max(BADGE_WIDTH, bitmap.width),
-            frames: [
-              resizeFrame(bitmap.rows, Math.max(BADGE_WIDTH, bitmap.width)),
-            ],
+            width: bitmap.width || BADGE_WIDTH,
+            frames: [resizeFrame(bitmap.rows, bitmap.width || BADGE_WIDTH)],
             text: { value: draft, face },
           }));
           setError(
@@ -785,10 +786,13 @@ export default function MobileApp() {
                   />
                 </div>
                 <div className="mobile-text-options">
-                  <button onClick={() => setPanel("font")}>
+                  <button disabled={rendering} onClick={() => setPanel("font")}>
                     {fonts.find((f) => f.id === face)?.name ?? "Font"}
                   </button>
-                  <button onClick={() => setPanel("motion")}>
+                  <button
+                    disabled={rendering}
+                    onClick={() => setPanel("motion")}
+                  >
                     {MODE_LABELS[active.mode]}
                   </button>
                   <button
