@@ -97,7 +97,7 @@ describe("mobile editing flows", () => {
     );
     expect(host.renderText).toHaveBeenLastCalledWith("HELLO", "serif");
     await user.click(screen.getByRole("button", { name: "Done" }));
-    expect(screen.getByRole("button", { name: /HELLO/ })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /HELLO/ })).toBeTruthy();
     await waitFor(() => expect(host.recoveryWrite).toHaveBeenCalled());
     const json = (
       host.recoveryWrite.mock.calls[
@@ -386,4 +386,19 @@ it("reapplies a selected font even when the saved face ID already matches", asyn
   await waitFor(() =>
     expect(host.renderText).toHaveBeenLastCalledWith("A", "comic"),
   );
+});
+
+it("returns Done to the root history entry instead of reopening the editor on Back", async () => {
+  const user = userEvent.setup();
+  await open();
+  for (let i = 0; i < 2; i++) {
+    await user.click(screen.getByRole("button", { name: /Untitled/ }));
+    expect(history.state.mobileDepth).toBe(1);
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    await screen.findByRole("button", { name: /Untitled/ });
+    expect(history.state).toMatchObject({
+      mobileRoute: "project",
+      mobileDepth: 0,
+    });
+  }
 });

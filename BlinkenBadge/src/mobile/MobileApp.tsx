@@ -141,6 +141,7 @@ export default function MobileApp() {
   const active =
     project.messages.find((m) => m.id === selectedId) ?? project.messages[0];
   const frame = active.frames[Math.min(frameIndex, active.frames.length - 1)];
+  const navigationDepth = useRef(0);
   const routeRef = useRef(route);
   routeRef.current = route;
   const busyRef = useRef(false);
@@ -161,10 +162,17 @@ export default function MobileApp() {
     window.addEventListener("resize", resize);
     const back = () => {
       if (busyRef.current) {
-        history.pushState({ mobileRoute: routeRef.current }, "");
+        history.pushState(
+          {
+            mobileRoute: routeRef.current,
+            mobileDepth: navigationDepth.current,
+          },
+          "",
+        );
         return;
       }
       const next = history.state?.mobileRoute;
+      navigationDepth.current = Math.max(0, history.state?.mobileDepth ?? 0);
       setPanel(null);
       setPlaying(false);
       setRoute(
@@ -173,7 +181,8 @@ export default function MobileApp() {
           : "project",
       );
     };
-    history.replaceState({ mobileRoute: "project" }, "");
+    navigationDepth.current = 0;
+    history.replaceState({ mobileRoute: "project", mobileDepth: 0 }, "");
     window.addEventListener("popstate", back);
     return () => {
       window.visualViewport?.removeEventListener("resize", resize);
@@ -183,6 +192,13 @@ export default function MobileApp() {
   }, [setError]);
   const go = (next: Route, message = active) => {
     forceTextRender.current = false;
+    if (next === "project" && navigationDepth.current > 0) {
+      setPanel(null);
+      setPlaying(false);
+      void flush();
+      history.go(-navigationDepth.current);
+      return;
+    }
     if (next === "preview")
       setPreviewStart({
         scope: route === "project" ? "sequence" : "slot",
@@ -199,7 +215,13 @@ export default function MobileApp() {
     }
     setFrameIndex(0);
     setSelection(null);
-    if (next !== route) history.pushState({ mobileRoute: next }, "");
+    if (next !== route) {
+      navigationDepth.current++;
+      history.pushState(
+        { mobileRoute: next, mobileDepth: navigationDepth.current },
+        "",
+      );
+    }
     setRoute(next);
     void flush();
   };
@@ -1737,6 +1759,13 @@ export default function MobileApp() {
                   onClick={() => {
                     update(active.id, (m) => ({ ...m, text: undefined }));
                     setPanel(null);
+                    history.replaceState(
+                      {
+                        mobileRoute: "draw",
+                        mobileDepth: navigationDepth.current,
+                      },
+                      "",
+                    );
                     setRoute("draw");
                   }}
                 >
