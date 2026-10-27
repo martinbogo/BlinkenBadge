@@ -1,6 +1,6 @@
 [package]
 name = "blinkenbadge"
-version = "1.0.30"
+version = "1.0.40"
 description = "Animation editor for 44x11 monochrome LED name badges (WCH CH582)"
 authors = ["Martin Bogomolni"]
 license = "Apache-2.0"
