@@ -32,6 +32,25 @@ interface Stroke {
   selection: Rect | null;
 }
 
+export interface ViewRequest {
+  serial: number;
+  scale: "fit" | number;
+}
+export interface MobileCanvasProps {
+  frame: Frame;
+  onionFrame?: Frame | null;
+  tool: MobileTool;
+  onChange(frame: Frame, history: boolean): void;
+  selection?: Rect | null;
+  onSelectionChange?(rect: Rect | null): void;
+  brushSize?: number;
+  filled?: boolean;
+  fitVersion?: number;
+  zoomVersion?: number;
+  disabled?: boolean;
+  viewRequest?: ViewRequest;
+  onZoomChange?(scale: number): void;
+}
 export default function MobileCanvas({
   frame,
   onionFrame,
@@ -43,18 +62,10 @@ export default function MobileCanvas({
   filled = false,
   fitVersion = 0,
   zoomVersion = 0,
-}: {
-  frame: Frame;
-  onionFrame?: Frame | null;
-  tool: MobileTool;
-  onChange(frame: Frame, history: boolean): void;
-  selection?: Rect | null;
-  onSelectionChange?(rect: Rect | null): void;
-  brushSize?: number;
-  filled?: boolean;
-  fitVersion?: number;
-  zoomVersion?: number;
-}) {
+  disabled = false,
+  viewRequest,
+  onZoomChange,
+}: MobileCanvasProps) {
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 300, height: 400 });
   const [view, setView] = useState<View>({ cell: 26, offset: 0, offsetY: 0 });
@@ -65,6 +76,8 @@ export default function MobileCanvas({
     view: View;
     center: number;
     centerY: number;
+    left: number;
+    top: number;
   } | null>(null);
   const pan = useRef<{
     x: number;
@@ -74,10 +87,24 @@ export default function MobileCanvas({
   } | null>(null);
   const [preview, setPreview] = useState<Frame | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
+  const followsFit = useRef(true);
+  const zoomReport = useRef(onZoomChange);
+  zoomReport.current = onZoomChange;
+  const [touchCursor, setTouchCursor] = useState<
+    (Point & { side: "left" | "right" }) | null
+  >(null);
   const [cursor, setCursor] = useState<Point | null>(null);
   const width = frame[0]?.length ?? 44;
+  const fitCell = Math.max(
+    1,
+    Math.min(
+      32,
+      Math.floor((size.width - 24) / Math.min(width, 44)),
+      Math.floor((size.height - 24) / 11),
+    ),
+  );
   const normalize = (v: View): View => ({
-    cell: Math.max(6, Math.min(64, v.cell)),
+    cell: Math.max(1, Math.min(64, v.cell)),
     offsetY: Math.max(
       0,
       Math.min(Math.max(0, 11 * v.cell + 24 - size.height), v.offsetY),
@@ -106,39 +133,66 @@ export default function MobileCanvas({
       offsetY: Math.min(v.offsetY, Math.max(0, 11 * v.cell + 24 - size.height)),
     }));
   }, [size.width, size.height, width]);
-  useEffect(() => {
-    if (fitVersion)
-      setView({
-        cell: Math.max(
-          6,
-          Math.min(
-            48,
-            Math.floor((size.width - 16) / width),
-            Math.floor((size.height - 20) / 11),
-          ),
-        ),
-        offset: 0,
-        offsetY: 0,
-      });
-  }, [fitVersion]);
-  useEffect(() => {
-    if (zoomVersion)
-      setView((v) =>
-        normalize({
-          cell: v.cell * 1.5,
-          offset: v.offset * 1.5,
-          offsetY: v.offsetY * 1.5,
-        }),
-      );
-  }, [zoomVersion]);
-  useEffect(() => {
+  const cancelInteraction = () => {
     stroke.current = null;
     gesture.current = null;
     pan.current = null;
     pointers.current.clear();
     setPreview(null);
     setMarquee(null);
+    setTouchCursor(null);
+  };
+  const fitView = () => {
+    cancelInteraction();
+    followsFit.current = true;
+    setView({ cell: fitCell, offset: 0, offsetY: 0 });
+  };
+  const scaleView = (cell: number) => {
+    cancelInteraction();
+    followsFit.current = false;
+    setView((v) => {
+      const target = Math.max(1, Math.min(64, cell));
+      const oldLeft = Math.max(0, (size.width - width * v.cell) / 2),
+        oldTop = Math.max(12, (size.height - 11 * v.cell) / 2);
+      const x = (v.offset + size.width / 2 - oldLeft) / v.cell;
+      const y = (v.offsetY + size.height / 2 - oldTop) / v.cell;
+      return normalize({
+        cell: target,
+        offset:
+          x * target +
+          Math.max(0, (size.width - width * target) / 2) -
+          size.width / 2,
+        offsetY:
+          y * target +
+          Math.max(12, (size.height - 11 * target) / 2) -
+          size.height / 2,
+      });
+    });
+  };
+  useEffect(() => {
+    if (followsFit.current) fitView();
+  }, [fitCell, width]);
+  useEffect(() => {
+    if (fitVersion) fitView();
+  }, [fitVersion]);
+  useEffect(() => {
+    if (zoomVersion) scaleView(view.cell * 1.5);
+  }, [zoomVersion]);
+  useEffect(() => {
+    if (viewRequest?.serial) {
+      if (viewRequest.scale === "fit") fitView();
+      else scaleView(fitCell * viewRequest.scale);
+    }
+  }, [viewRequest?.serial]);
+  useEffect(() => {
+    zoomReport.current?.(view.cell / fitCell);
+  }, [view.cell, fitCell]);
+  useEffect(() => {
+    if (!disabled) cancelInteraction();
   }, [frame]);
+  useEffect(() => {
+    cancelInteraction();
+  }, [disabled]);
   const top = Math.max(12, (size.height - 11 * view.cell) / 2);
   const left = Math.max(0, (size.width - width * view.cell) / 2);
   const point = (p: Point): Point => ({
@@ -159,7 +213,7 @@ export default function MobileCanvas({
     };
   const paint = (p: Point) => {
     const s = stroke.current;
-    if (!s || !inside(p)) return;
+    if (!s || !inside(p) || disabled) return;
     if (s.mode === "paint") {
       const points =
         tool === "fill"
@@ -201,6 +255,7 @@ export default function MobileCanvas({
       }
     }
     stroke.current = null;
+    setTouchCursor(null);
     setPreview(null);
     setMarquee(null);
   };
@@ -214,7 +269,14 @@ export default function MobileCanvas({
   return (
     <div className="mobile-canvas-host" ref={host}>
       <span className="mobile-zoom-label">
-        {width * view.cell > size.width ? "Pinch to Zoom" : "Full View"}
+        {Math.round((view.cell / fitCell) * 100)}% ·{" "}
+        {!disabled && tool === "pencil"
+          ? "Tap Pixels to Toggle"
+          : !disabled && tool === "eraser"
+            ? "Drag to Erase"
+            : view.cell > fitCell + 0.1
+              ? "Two Fingers to Move"
+              : "Full Badge View"}
       </span>
       <svg
         className="mobile-pixel-canvas"
@@ -223,6 +285,7 @@ export default function MobileCanvas({
         role="img"
         aria-label={`${width} by 11 pixel canvas; ${tool}`}
         aria-describedby="mobile-canvas-help"
+        aria-disabled={disabled}
         tabIndex={0}
         onContextMenu={(e) => e.preventDefault()}
         onPointerDown={(e) => {
@@ -231,6 +294,7 @@ export default function MobileCanvas({
           const p = position(e);
           pointers.current.set(e.pointerId, p);
           if (pointers.current.size >= 2) {
+            followsFit.current = false;
             finish(true);
             pan.current = null;
             const [a, b] = [...pointers.current.values()];
@@ -239,11 +303,14 @@ export default function MobileCanvas({
               view,
               center: (a.x + b.x) / 2,
               centerY: (a.y + b.y) / 2,
+              left,
+              top,
             };
             return;
           }
           if (gesture.current) return;
-          if (tool === "pan") {
+          if (tool === "pan" || disabled) {
+            followsFit.current = false;
             pan.current = {
               x: p.x,
               y: p.y,
@@ -267,14 +334,22 @@ export default function MobileCanvas({
             draft: frame,
             start: cell,
             last: cell,
+            // Choose the stroke's ink once so crossing a pixel never toggles it twice.
             value:
-              tool === "fill"
-                ? !frame[cell.y][cell.x]
-                : e.button !== 2 && tool !== "eraser",
+              e.button === 2 || tool === "eraser"
+                ? false
+                : tool === "pencil" || tool === "fill"
+                  ? !frame[cell.y][cell.x]
+                  : true,
             mode,
             selection,
           };
           paint(cell);
+          if (mode !== "select" && mode !== "move")
+            setTouchCursor({
+              ...cell,
+              side: p.x > size.width / 2 ? "left" : "right",
+            });
         }}
         onPointerMove={(e) => {
           if (!pointers.current.has(e.pointerId)) return;
@@ -284,13 +359,13 @@ export default function MobileCanvas({
             const [a, b] = [...pointers.current.values()],
               g = gesture.current;
             const cell = Math.max(
-              6,
+              1,
               Math.min(
                 64,
                 (g.view.cell * Math.hypot(a.x - b.x, a.y - b.y)) / g.distance,
               ),
             );
-            const anchor = (g.center + g.view.offset - left) / g.view.cell;
+            const anchor = (g.center + g.view.offset - g.left) / g.view.cell;
             setView(
               normalize({
                 cell,
@@ -299,7 +374,7 @@ export default function MobileCanvas({
                   (a.x + b.x) / 2 +
                   Math.max(0, (size.width - width * cell) / 2),
                 offsetY:
-                  ((g.centerY + g.view.offsetY - top) / g.view.cell) * cell -
+                  ((g.centerY + g.view.offsetY - g.top) / g.view.cell) * cell -
                   (a.y + b.y) / 2 +
                   Math.max(12, (size.height - 11 * cell) / 2),
               }),
@@ -312,7 +387,19 @@ export default function MobileCanvas({
                 offsetY: pan.current.offsetY - p.y + pan.current.y,
               }),
             );
-          else if (!gesture.current && tool !== "fill") paint(point(p));
+          else if (!gesture.current && tool !== "fill") {
+            const cell = point(p);
+            paint(cell);
+            if (
+              inside(cell) &&
+              stroke.current &&
+              ["paint", "shape"].includes(stroke.current.mode)
+            )
+              setTouchCursor({
+                ...cell,
+                side: p.x > size.width / 2 ? "left" : "right",
+              });
+          }
         }}
         onPointerUp={(e) => {
           if (!gesture.current && !pan.current && tool !== "fill")
@@ -333,6 +420,7 @@ export default function MobileCanvas({
           }
         }}
         onKeyDown={(e) => {
+          if (disabled) return;
           const p = cursor ?? { x: first, y: 0 };
           if (
             ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)
@@ -395,7 +483,7 @@ export default function MobileCanvas({
                       : "var(--mobile-pixel)"
                 }
                 stroke="var(--mobile-grid)"
-                strokeWidth={view.cell >= 12 ? 0.7 : 0}
+                strokeWidth={view.cell >= 12 ? 0.7 : 0.4}
               />
             )),
         )}
@@ -438,9 +526,57 @@ export default function MobileCanvas({
           />
         )}
       </svg>
+      {touchCursor && !disabled && (
+        <div
+          className={`canvas-lens lens-${touchCursor.side}`}
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 70 70">
+            {Array.from({ length: 7 }, (_, dy) =>
+              Array.from({ length: 7 }, (_, dx) => {
+                const x = touchCursor.x + dx - 3,
+                  y = touchCursor.y + dy - 3;
+                const valid = x >= 0 && x < width && y >= 0 && y < 11;
+                return (
+                  <rect
+                    key={`${dx}:${dy}`}
+                    x={dx * 10}
+                    y={dy * 10}
+                    width="10"
+                    height="10"
+                    fill={
+                      valid
+                        ? shown[y][x]
+                          ? "var(--mobile-led)"
+                          : "var(--mobile-pixel)"
+                        : "var(--mobile-panel)"
+                    }
+                    stroke="var(--mobile-grid)"
+                    strokeWidth=".7"
+                  />
+                );
+              }),
+            )}
+            <rect
+              x="30"
+              y="30"
+              width="10"
+              height="10"
+              fill="none"
+              stroke="var(--mobile-accent)"
+              strokeWidth="2"
+            />
+          </svg>
+          <span>
+            {touchCursor.x + 1}, {touchCursor.y + 1}
+          </span>
+        </div>
+      )}
       <span id="mobile-canvas-help" className="mobile-sr">
-        Draw or select with one finger; pinch or use Move Canvas to navigate.
-        Use arrow keys and Space to edit pixels with a keyboard.
+        With Draw, tap a pixel to toggle it. Start a stroke on a dark pixel to
+        draw, or a lit pixel to erase. Erase always clears pixels. Two fingers
+        zoom and move the canvas. Use arrow keys and Space to edit pixels with a
+        keyboard.
       </span>
     </div>
   );

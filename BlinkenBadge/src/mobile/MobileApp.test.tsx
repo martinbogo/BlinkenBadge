@@ -2,6 +2,7 @@
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -12,7 +13,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import type { TextBitmap } from "../types";
 import type { Recovery } from "../platform/types";
-import { blankFrame, newMessage, renderPreview } from "../badge";
+import { blankFrame, newMessage, renderPreview, stepDelay } from "../badge";
 import { parseMessage, parseProject, serializeProject } from "../doc";
 
 const host = vi.hoisted(() => ({
@@ -194,7 +195,7 @@ describe("mobile desktop feature parity", () => {
       name: `Animation ${slot + 1}`,
       frames: Array.from({ length: 8 }, (_, index) => {
         const frame = blankFrame(44);
-        frame[slot][index] = true;
+        frame[slot][16 + index] = true;
         return frame;
       }),
     })),
@@ -287,6 +288,102 @@ describe("mobile desktop feature parity", () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
     expect(screen.getByRole("heading", { name: "Animation 8" })).toBeTruthy();
+  });
+  it("plays in the zoomed canvas and pauses on the visible frame without leaving Focus", async () => {
+    const user = userEvent.setup();
+    const project = await restore();
+    await user.click(
+      screen.getByRole("button", { name: /Animation 1.*Slot 1/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Zoom 4 Times" }));
+    await user.click(screen.getByRole("button", { name: "Focus Canvas" }));
+    const workspace = screen.getByRole("region", { name: "Drawing Workspace" });
+    const canvas = within(workspace).getByRole("img", { name: /pixel canvas/ });
+    const lit = () => canvas.querySelector('rect[fill="var(--mobile-led)"]');
+    const before = lit()?.getAttribute("x");
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(
+        within(workspace).getByRole("button", { name: "Play Preview" }),
+      );
+      act(() =>
+        vi.advanceTimersByTime(stepDelay(project.messages[0].speed) * 2),
+      );
+      expect(
+        within(workspace).getByRole("button", { name: "Frame Options" })
+          .textContent,
+      ).toContain("Frame 3/8");
+      expect(canvas.getAttribute("aria-disabled")).toBe("true");
+      expect(lit()?.getAttribute("x")).not.toBe(before);
+      const paused = lit()?.getAttribute("x");
+      fireEvent.click(
+        within(workspace).getByRole("button", { name: "Pause Preview" }),
+      );
+      expect(canvas.getAttribute("aria-disabled")).toBe("false");
+      expect(lit()?.getAttribute("x")).toBe(paused);
+      fireEvent.click(
+        within(workspace).getByRole("button", { name: "Previous Frame" }),
+      );
+      expect(
+        within(workspace).getByRole("button", { name: "Frame Options" })
+          .textContent,
+      ).toContain("Frame 2/8");
+    } finally {
+      vi.useRealTimers();
+    }
+    await user.click(
+      within(workspace).getByRole("button", { name: "Show Frames" }),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Frame 2" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(canvas.querySelector("rect")?.getAttribute("width")).toBe("24");
+    expect(screen.getByRole("button", { name: "Focus Canvas" })).toBeTruthy();
+  });
+  it("keeps the canvas valid when Undo removes a newly duplicated frame", async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.click(screen.getByRole("button", { name: "+ Add" }));
+    await user.click(screen.getByRole("button", { name: "Animation" }));
+    await user.click(screen.getByRole("button", { name: "Zoom 4 Times" }));
+    await user.click(screen.getByRole("button", { name: "Duplicate Frame" }));
+    expect(
+      screen
+        .getByRole("button", { name: "Frame 2" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.queryByRole("button", { name: "Frame 2" })).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Frame 1" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    const canvas = screen.getByRole("img", { name: /pixel canvas/ });
+    expect(canvas.querySelector("rect")?.getAttribute("width")).toBe("24");
+  });
+  it("uses Back to exit Focus and close sheets before leaving the drawing", async () => {
+    const user = userEvent.setup();
+    await restore();
+    await user.click(
+      screen.getByRole("button", { name: /Animation 1.*Slot 1/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Focus Canvas" }));
+    await user.click(screen.getByRole("button", { name: "Frame Options" }));
+    history.back();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: "Exit Focus" })).toBeTruthy();
+    history.back();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Exit Focus" })).toBeNull(),
+    );
+    expect(screen.getByRole("button", { name: "Focus Canvas" })).toBeTruthy();
+    history.back();
+    expect(
+      await screen.findByRole("button", { name: /Animation 1.*Slot 1/ }),
+    ).toBeTruthy();
   });
   it("offers all twelve pixel fonts and renders the selected face", async () => {
     const user = userEvent.setup();

@@ -53,8 +53,10 @@ import {
   type Project,
 } from "../types";
 import { emptyMobileProject, useMobileProject } from "./useMobileProject";
-import MobileCanvas, { type MobileTool } from "./MobileCanvas";
+import type { MobileTool } from "./MobileCanvas";
 import Sheet from "./Sheet";
+import DrawingWorkspace from "./DrawingWorkspace";
+import StudioIcon from "./StudioIcon";
 import "../App.css";
 import "./mobile.css";
 
@@ -121,6 +123,11 @@ export default function MobileApp() {
   const [frameIndex, setFrameIndex] = useState(0);
   const [fitVersion, fit] = useState(0);
   const [zoomVersion, zoom] = useState(0);
+  const [drawingFocus, setDrawingFocus] = useState(false);
+  const drawingFocusRef = useRef(false);
+  drawingFocusRef.current = drawingFocus;
+  const panelRef = useRef<Panel>(null);
+  panelRef.current = panel;
   const [playing, setPlaying] = useState(false);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState<"scan" | "send" | "file" | null>(null);
@@ -161,7 +168,11 @@ export default function MobileApp() {
     window.visualViewport?.addEventListener("resize", resize);
     window.addEventListener("resize", resize);
     const back = () => {
-      if (busyRef.current) {
+      if (
+        busyRef.current ||
+        panelRef.current ||
+        (routeRef.current === "draw" && drawingFocusRef.current)
+      ) {
         history.pushState(
           {
             mobileRoute: routeRef.current,
@@ -169,6 +180,10 @@ export default function MobileApp() {
           },
           "",
         );
+        if (!busyRef.current) {
+          if (panelRef.current) setPanel(null);
+          else setDrawingFocus(false);
+        }
         return;
       }
       const next = history.state?.mobileRoute;
@@ -192,6 +207,7 @@ export default function MobileApp() {
   }, [setError]);
   const go = (next: Route, message = active) => {
     forceTextRender.current = false;
+    setDrawingFocus(false);
     if (next === "project" && navigationDepth.current > 0) {
       setPanel(null);
       setPlaying(false);
@@ -316,6 +332,49 @@ export default function MobileApp() {
   useEffect(() => platform.onSendProgress(setProgress), []);
   useEffect(() => setSelection(null), [active.id, frameIndex]);
 
+  const shownFrame =
+    playing && active.mode === "animation"
+      ? step % active.frames.length
+      : Math.min(frameIndex, active.frames.length - 1);
+  const selectFrame = (index: number) => {
+    setPlaying(false);
+    setFrameIndex(index);
+    setStep(index);
+    setSelection(null);
+  };
+  const pauseFrame = () => {
+    const index = shownFrame;
+    setPlaying(false);
+    setFrameIndex(index);
+    setSelection(null);
+    return index;
+  };
+  const toggleDrawingPlayback = () => {
+    if (playing) pauseFrame();
+    else {
+      setStep(active.mode === "animation" ? frameIndex : 0);
+      setPlaying(true);
+    }
+  };
+  const duplicateFrame = () => {
+    if (active.frames.length >= ANIMATION_MAX_FRAMES) return;
+    const index = pauseFrame();
+    update(active.id, (m) => {
+      const frames = [...m.frames];
+      frames.splice(index + 1, 0, cloneFrame(m.frames[index]));
+      return { ...m, frames };
+    });
+    selectFrame(index + 1);
+  };
+  const addBlankFrame = () => {
+    if (active.frames.length >= ANIMATION_MAX_FRAMES) return;
+    const index = active.frames.length;
+    update(active.id, (m) => ({
+      ...m,
+      frames: [...m.frames, blankFrame(m.width)],
+    }));
+    selectFrame(index);
+  };
   const add = (kind: "text" | "drawing" | "animation") => {
     const text = kind === "text";
     if (project.messages.length >= MAX_MESSAGES) return;
@@ -618,6 +677,7 @@ export default function MobileApp() {
   return (
     <div
       className="mobile-app"
+      data-drawing-focus={route === "draw" && drawingFocus ? "true" : undefined}
       ref={root}
       style={
         {
@@ -664,6 +724,23 @@ export default function MobileApp() {
             >
               •••
             </button>
+          ) : route === "draw" ? (
+            <div className="studio-header-history">
+              <button
+                aria-label="Undo"
+                disabled={!editor.canUndo || playing}
+                onClick={editor.undo}
+              >
+                <StudioIcon name="undo" />
+              </button>
+              <button
+                aria-label="Redo"
+                disabled={!editor.canRedo || playing}
+                onClick={editor.redo}
+              >
+                <StudioIcon name="redo" />
+              </button>
+            </div>
           ) : route !== "send" ? (
             <button disabled={disabled} onClick={done}>
               Done
@@ -829,49 +906,47 @@ export default function MobileApp() {
               </main>
             )}
             {route === "draw" && (
-              <>
-                <main className="mobile-drawing">
-                  <div className="mobile-canvas-monitor">
-                    <MiniBadge
-                      message={
-                        playing ? active : { ...active, frames: [frame] }
-                      }
-                      step={playing ? step : undefined}
-                      playing={playing}
-                      brightness={project.brightness}
-                    />
-                    <div>
-                      <span>
-                        {active.mode === "animation"
-                          ? `Frame ${frameIndex + 1} of ${active.frames.length}`
-                          : "Display Preview"}
-                      </span>
-                      <button
-                        onClick={() => {
-                          setPlaying((value) => !value);
-                          setStep(frameIndex);
-                        }}
-                      >
-                        {playing ? "Pause" : "Play"}
-                      </button>
-                    </div>
-                  </div>
-                  <MobileCanvas
-                    key={active.id}
-                    frame={frame}
-                    onionFrame={
-                      onion && active.mode === "animation" && frameIndex > 0
-                        ? active.frames[frameIndex - 1]
-                        : null
-                    }
-                    selection={selection}
-                    onSelectionChange={setSelection}
-                    brushSize={brushSize}
-                    filled={filled}
-                    tool={tool}
-                    fitVersion={fitVersion}
-                    zoomVersion={zoomVersion}
-                    onChange={(next, record) =>
+              <DrawingWorkspace
+                key={active.id}
+                message={active}
+                current={frameIndex}
+                playing={playing}
+                step={step}
+                brightness={project.brightness}
+                focus={drawingFocus}
+                onFocus={setDrawingFocus}
+                onion={onion}
+                onOnion={setOnion}
+                onPlay={toggleDrawingPlayback}
+                onSelect={selectFrame}
+                onDuplicate={duplicateFrame}
+                onBlank={addBlankFrame}
+                onFrames={() => {
+                  pauseFrame();
+                  setPanel("frames");
+                }}
+                onTools={() => {
+                  pauseFrame();
+                  setPanel("tool");
+                }}
+                onMore={() => {
+                  pauseFrame();
+                  setPanel("canvas");
+                }}
+                undo={editor.undo}
+                redo={editor.redo}
+                canUndo={editor.canUndo && !playing}
+                canRedo={editor.canRedo && !playing}
+                canvas={{
+                  tool,
+                  brushSize,
+                  filled,
+                  selection,
+                  onSelectionChange: setSelection,
+                  fitVersion,
+                  zoomVersion,
+                  onChange: (next, record) => {
+                    if (!playing)
                       update(
                         active.id,
                         (m) => ({
@@ -882,109 +957,10 @@ export default function MobileApp() {
                           ),
                         }),
                         record,
-                      )
-                    }
-                  />
-                </main>
-                {active.mode === "animation" && (
-                  <div
-                    className="mobile-timeline"
-                    aria-label="Animation Frames"
-                  >
-                    <button onClick={() => go("preview")}>Preview</button>
-                    <button
-                      aria-label="Frame Options"
-                      onClick={() => setPanel("frames")}
-                    >
-                      Frame {frameIndex + 1}/{active.frames.length}
-                    </button>
-                    {active.frames.map((f, i) => (
-                      <button
-                        key={i}
-                        aria-label={`Frame ${i + 1}`}
-                        aria-pressed={i === frameIndex}
-                        onClick={() => {
-                          setFrameIndex(i);
-                          setSelection(null);
-                        }}
-                      >
-                        {i + 1}
-                        <svg viewBox="0 0 44 11" aria-hidden="true">
-                          {f.flatMap((r, y) =>
-                            r.map((v, x) =>
-                              v ? (
-                                <rect
-                                  key={`${x}:${y}`}
-                                  x={x}
-                                  y={y}
-                                  width="1"
-                                  height="1"
-                                />
-                              ) : null,
-                            ),
-                          )}
-                        </svg>
-                      </button>
-                    ))}
-                    <button
-                      aria-label="Add Frame"
-                      disabled={active.frames.length >= ANIMATION_MAX_FRAMES}
-                      onClick={() => {
-                        const count = active.frames.length;
-                        update(active.id, (m) => ({
-                          ...m,
-                          frames: [...m.frames, blankFrame(m.width)],
-                        }));
-                        setFrameIndex(count);
-                      }}
-                    >
-                      +
-                    </button>
-                  </div>
-                )}
-                {playing && (
-                  <div className="mobile-animation-preview">
-                    <MiniBadge
-                      message={active}
-                      step={playing ? step : undefined}
-                      playing={playing}
-                      brightness={project.brightness}
-                    />
-                  </div>
-                )}
-                <footer className="mobile-drawing-tools">
-                  <button
-                    aria-label="Undo"
-                    disabled={!editor.canUndo}
-                    onClick={editor.undo}
-                  >
-                    ↶
-                  </button>
-                  <button
-                    className="mobile-active-tool"
-                    onClick={() => setPanel("tool")}
-                  >
-                    {
-                      {
-                        pencil: "Draw",
-                        eraser: "Erase",
-                        fill: "Fill",
-                        pan: "Move Canvas",
-                        line: "Line",
-                        rect: "Rectangle",
-                        ellipse: "Ellipse",
-                        select: "Select",
-                      }[tool]
-                    }
-                  </button>
-                  <button
-                    aria-label="Canvas Options"
-                    onClick={() => setPanel("canvas")}
-                  >
-                    •••
-                  </button>
-                </footer>
-              </>
+                      );
+                  },
+                }}
+              />
             )}
             {route === "preview" && (
               <MobilePreview
@@ -1149,17 +1125,20 @@ export default function MobileApp() {
                 <button
                   disabled={active.frames.length >= ANIMATION_MAX_FRAMES}
                   onClick={() => {
-                    update(active.id, (m) => {
-                      const frames = [...m.frames];
-                      frames.splice(frameIndex + 1, 0, cloneFrame(frame));
-                      return { ...m, frames };
-                    });
-                    setFrameIndex(frameIndex + 1);
-                    setSelection(null);
+                    duplicateFrame();
                     setPanel(null);
                   }}
                 >
                   Duplicate Frame
+                </button>
+                <button
+                  disabled={active.frames.length >= ANIMATION_MAX_FRAMES}
+                  onClick={() => {
+                    addBlankFrame();
+                    setPanel(null);
+                  }}
+                >
+                  Add Blank Frame
                 </button>
                 <button
                   disabled={frameIndex === 0}
@@ -1581,6 +1560,35 @@ export default function MobileApp() {
             )}
             {panel === "tool" && (
               <>
+                <div className="mobile-control-grid">
+                  {(
+                    [
+                      ["pencil", "Draw"],
+                      ["eraser", "Erase"],
+                      ["fill", "Fill"],
+                      ["line", "Line"],
+                      ["rect", "Rectangle"],
+                      ["ellipse", "Ellipse"],
+                      ["select", "Select"],
+                      ["pan", "Move Canvas"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      aria-pressed={tool === id}
+                      onClick={() => {
+                        setTool(id);
+                        setPanel(null);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p>
+                  With Draw, tap to toggle a pixel. Start on a dark pixel to
+                  draw, or a lit pixel to erase.
+                </p>
                 {tool === "select" && (
                   <button onClick={() => setPanel("selection")}>
                     Selection Options
@@ -1609,30 +1617,6 @@ export default function MobileApp() {
                 </label>
               </>
             )}
-            {panel === "tool" &&
-              (
-                [
-                  ["pencil", "Draw"],
-                  ["eraser", "Erase"],
-                  ["fill", "Fill"],
-                  ["line", "Line"],
-                  ["rect", "Rectangle"],
-                  ["ellipse", "Ellipse"],
-                  ["select", "Select"],
-                  ["pan", "Move Canvas"],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  aria-pressed={tool === id}
-                  onClick={() => {
-                    setTool(id);
-                    setPanel(null);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
             {panel === "canvas" && (
               <>
                 <button onClick={() => setPanel("insert")}>Insert</button>
