@@ -186,6 +186,9 @@ export default function App() {
   );
   /** A question that has to be answered before anything else happens. */
   const [ask, setAsk] = useState<Ask | null>(null);
+  const documentEpoch = useRef(0);
+  const saveSequence = useRef(0);
+  const documentWrites = useRef(Promise.resolve());
 
   const active =
     project.messages.find((m) => m.id === requestedId) ??
@@ -535,6 +538,7 @@ export default function App() {
   /** Replace the whole document and treat the result as freshly opened. */
   const adopt = useCallback(
     (next: Project, path: string | null) => {
+      documentEpoch.current++;
       resetHistory(next);
       setActiveId(next.messages[0].id);
       setFrameIndex(0);
@@ -551,8 +555,20 @@ export default function App() {
   const writeTo = useCallback(
     async (path: string, p: Project) => {
       const json = serializeProject(p);
+      const epoch = documentEpoch.current;
+      const sequence = ++saveSequence.current;
+      const write = documentWrites.current.then(() =>
+        platform.writeText(path, json, "project"),
+      );
+      documentWrites.current = write.catch(() => {});
       try {
-        await platform.writeText(path, json, "project");
+        await write;
+        // A slow save must not adopt its path into a newer document.
+        if (
+          epoch !== documentEpoch.current ||
+          sequence !== saveSequence.current
+        )
+          return false;
         setDocPath(path);
         setSavedJson(json);
         // The autosave exists to survive a crash. Once the work is on disk for
@@ -571,9 +587,10 @@ export default function App() {
 
   const saveProjectAs = useCallback(async () => {
     const suggested = `${safeFileName(baseName(docPath) ?? "Untitled", "Untitled")}.${PROJECT_EXT}`;
+    const epoch = documentEpoch.current;
     try {
       const path = await platform.pickSave("project", suggested);
-      if (!path) return false;
+      if (!path || epoch !== documentEpoch.current) return false;
       return await writeTo(path, project);
     } catch (e) {
       setTextWarning(String(e));

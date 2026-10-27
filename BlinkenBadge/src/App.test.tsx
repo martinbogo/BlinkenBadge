@@ -2,6 +2,7 @@
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -203,6 +204,45 @@ describe("editor regressions", () => {
       ).value,
     ).toBe("Recovered");
     expect(host.recoveryClear).not.toHaveBeenCalled();
+  });
+
+  it("does not attach an old file path to a new document after a slow save", async () => {
+    const user = userEvent.setup();
+    let finish!: () => void;
+    host.pickSave.mockResolvedValue("old.badge");
+    host.writeText.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderApp();
+    fireEvent.change(screen.getByRole("textbox", { name: "Message Name" }), {
+      target: { value: "Old Document" },
+    });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(finish).toBeTypeOf("function"));
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Discard",
+      }),
+    );
+    await act(async () => {
+      finish();
+    });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Message Name",
+          }) as HTMLInputElement
+        ).value,
+      ).toBe("Untitled"),
+    );
+    expect(
+      screen.getByRole("button", { name: "Save" }).getAttribute("title"),
+    ).toContain("Save this project to a file");
   });
 
   it("ignores a corrupt LED preference instead of crashing", () => {
