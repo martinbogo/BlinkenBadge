@@ -42,9 +42,16 @@ vi.mock("../font", async (original) => ({
     { id: "sans", name: "Sans", notice: "" },
     { id: "cartoon", name: "Cartoon", notice: "" },
     { id: "future", name: "Futuristic", notice: "" },
-    ...["Comic", "Arcade", "Terminal", "Stencil", "Outline", "Tiny"].map(
-      (name) => ({ id: name.toLowerCase(), name, notice: "" }),
-    ),
+    ...[
+      "Comic",
+      "Arcade",
+      "Terminal",
+      "Stencil",
+      "Outline",
+      "Tiny",
+      "Punk",
+      "Script",
+    ].map((name) => ({ id: name.toLowerCase(), name, notice: "" })),
   ],
 }));
 import MobileApp from "./MobileApp";
@@ -280,7 +287,7 @@ describe("mobile desktop feature parity", () => {
     ).toBe("true");
     expect(screen.getByRole("heading", { name: "Animation 8" })).toBeTruthy();
   });
-  it("offers all ten pixel fonts and renders the selected face", async () => {
+  it("offers all twelve pixel fonts and renders the selected face", async () => {
     const user = userEvent.setup();
     await open();
     await user.click(screen.getByRole("button", { name: /Untitled/ }));
@@ -296,6 +303,8 @@ describe("mobile desktop feature parity", () => {
       "Stencil",
       "Outline",
       "Tiny",
+      "Punk",
+      "Script",
     ])
       expect(screen.getByRole("button", { name })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Futuristic" }));
@@ -353,4 +362,28 @@ describe("animation frame artwork", () => {
     expect(back.frames[0][0].slice(0, 2)).toEqual([true, true]);
     expect(back.frames[0][2][10]).toBe(true);
   });
+});
+
+it("reapplies a selected font even when the saved face ID already matches", async () => {
+  const user = userEvent.setup();
+  const message = {
+    ...newMessage("fixed"),
+    name: "Saved Comic",
+    text: { value: "A", face: "comic" },
+  };
+  host.recoveryRead.mockResolvedValue({
+    json: serializeProject({ brightness: 100, messages: [message] }),
+    path: null,
+    saved_at: "",
+  });
+  render(<MobileApp />);
+  await user.click(await screen.findByRole("button", { name: /Saved Comic/ }));
+  expect(host.renderText).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "Comic" }));
+  await user.click(
+    within(screen.getByRole("dialog")).getByRole("button", { name: "Comic" }),
+  );
+  await waitFor(() =>
+    expect(host.renderText).toHaveBeenLastCalledWith("A", "comic"),
+  );
 });

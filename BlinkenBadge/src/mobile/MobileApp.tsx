@@ -135,6 +135,8 @@ export default function MobileApp() {
   const [sent, setSent] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const renderSequence = useRef(0);
+  const forceTextRender = useRef(false);
+  const [fontChoiceVersion, refreshFontChoice] = useState(0);
   const operation = useRef(false);
   const active =
     project.messages.find((m) => m.id === selectedId) ?? project.messages[0];
@@ -180,6 +182,7 @@ export default function MobileApp() {
     };
   }, [setError]);
   const go = (next: Route, message = active) => {
+    forceTextRender.current = false;
     if (next === "preview")
       setPreviewStart({
         scope: route === "project" ? "sequence" : "slot",
@@ -217,7 +220,11 @@ export default function MobileApp() {
   // Rendering only replaces editable text. Imported pixel artwork is never inferred as text.
   useEffect(() => {
     if (route !== "text" || !ready || !active.text) return;
-    if (draft === active.text.value && face === active.text.face) {
+    if (
+      draft === active.text.value &&
+      face === active.text.face &&
+      !forceTextRender.current
+    ) {
       setRendering(false);
       return;
     }
@@ -230,6 +237,7 @@ export default function MobileApp() {
         .then((bitmap) => {
           if (sequence !== renderSequence.current) return;
           setRendering(false);
+          forceTextRender.current = false;
           update(id, (m) => ({
             ...m,
             name: draft.trim().slice(0, 20) || "Untitled",
@@ -262,6 +270,7 @@ export default function MobileApp() {
   }, [
     draft,
     face,
+    fontChoiceVersion,
     active.id,
     active.text?.value,
     active.text?.face,
@@ -1478,6 +1487,8 @@ export default function MobileApp() {
                   face={f}
                   selected={face === f.id}
                   onSelect={() => {
+                    forceTextRender.current = true;
+                    refreshFontChoice((value) => value + 1);
                     setDraft((t) => fitText(t, textBudget, f.id));
                     setFace(f.id);
                     setPanel(null);

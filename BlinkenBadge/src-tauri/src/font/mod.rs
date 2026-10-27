@@ -29,7 +29,9 @@ mod comic;
 mod emoji;
 mod future;
 mod outline;
+mod punk;
 mod sans;
+mod script;
 mod serif;
 mod stencil;
 mod terminal;
@@ -89,6 +91,8 @@ pub static FACES: &[&Face] = &[
     &stencil::STENCIL,
     &outline::OUTLINE,
     &tiny::TINY,
+    &punk::PUNK,
+    &script::SCRIPT,
     &emoji::EMOJI,
 ];
 
@@ -247,9 +251,9 @@ mod tests {
     }
 
     #[test]
-    fn ten_selectable_faces_have_distinct_designs() {
+    fn twelve_selectable_faces_have_distinct_designs() {
         let pick: Vec<_> = FACES.iter().filter(|f| f.pickable).collect();
-        assert_eq!(pick.len(), 10);
+        assert_eq!(pick.len(), 12);
         for (i, a) in pick.iter().enumerate() {
             assert_eq!(a.glyphs.len(), 283, "{} lost alphabet coverage", a.id);
             for b in &pick[i + 1..] {
@@ -287,6 +291,27 @@ mod tests {
                     lit, ink as usize,
                     "{id} clips an accent at position {position}"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn script_joins_without_clipping_essential_strokes() {
+        let f = face("script").unwrap();
+        let advance = f.glyph('a').unwrap().advance as usize;
+        let text = layout(f, "aa");
+        assert_eq!(text.width, advance * 2);
+        assert!(text.rows[7][advance]);
+        for (ch, glyph) in f.glyphs {
+            let overhang = (1u16 << (GLYPH_FIELD - glyph.advance as usize)) - 1;
+            for (y, row) in glyph.rows.iter().enumerate() {
+                if y != 7 {
+                    assert_eq!(
+                        row & overhang,
+                        0,
+                        "{ch} has essential ink beyond its advance"
+                    );
+                }
             }
         }
     }
