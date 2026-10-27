@@ -21,3 +21,10 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  - package-ecosystem: gradle
+    directory: /BlinkenBadge/src-tauri/gen/android
+    schedule:
+      interval: weekly
+    groups:
+      android:
+        patterns: ["*"]

@@ -1,0 +1,13 @@
+{
+  "bundle": {
+    "android": {
+      "minSdkVersion": 24,
+      "debugApplicationIdSuffix": ".dev"
+    },
+    "fileAssociations": []
+  },
+  "build": {
+    "frontendDist": "../dist-android",
+    "beforeBuildCommand": "npm run build:android"
+  }
+}
