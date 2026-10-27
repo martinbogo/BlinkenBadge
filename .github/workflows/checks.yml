@@ -25,7 +25,7 @@ jobs:
       - name: Verify generated fonts and idempotence
         run: |
           for pass in 1 2; do
-            python3 fonts/derive.py serif sans cartoon future
+            python3 fonts/derive.py serif sans cartoon future comic arcade terminal stencil outline tiny
             python3 fonts/build.py
             python3 fonts/webfont.py
             git diff --exit-code

@@ -15,12 +15,23 @@ export function MiniBadge({
   step,
   brightness = 100,
   hidden = false,
+  playing = false,
 }: {
   message: Message;
   step?: number;
   brightness?: number;
   hidden?: boolean;
+  playing?: boolean;
 }) {
+  const [blinkOn, setBlinkOn] = useState(true);
+  useEffect(() => {
+    if (!playing || !message.blink) {
+      setBlinkOn(true);
+      return;
+    }
+    const timer = setInterval(() => setBlinkOn((value) => !value), 400);
+    return () => clearInterval(timer);
+  }, [playing, message.blink]);
   const pixels = renderPreview(
     step === undefined ? { ...message, mode: "animation" } : message,
     step ?? 0,
@@ -30,22 +41,34 @@ export function MiniBadge({
       className="mobile-badge"
       viewBox="0 0 44 11"
       role="img"
-      aria-label={`${message.name} badge preview`}
+      aria-label={`${message.name}: 44 by 11 pixel display${pixels.some((row) => row.some(Boolean)) ? "" : ", empty"}`}
     >
-      <g opacity={hidden ? 0 : 0.55 + (brightness / 100) * 0.45}>
+      <rect
+        className="mobile-display-bezel"
+        x="-.7"
+        y="-.7"
+        width="45.4"
+        height="12.4"
+        rx=".7"
+        fill="#090d14"
+      />
+      <g>
         {pixels.flatMap((row, y) =>
-          row.map((lit, x) =>
-            lit ? (
-              <rect
-                key={`${x}:${y}`}
-                x={x + 0.12}
-                y={y + 0.12}
-                width=".76"
-                height=".76"
-                rx=".1"
-              />
-            ) : null,
-          ),
+          row.map((lit, x) => (
+            <rect
+              key={`${x}:${y}`}
+              x={x + 0.12}
+              y={y + 0.12}
+              width=".76"
+              height=".76"
+              rx=".18"
+              data-led={lit && !hidden && blinkOn ? "on" : "off"}
+              fill={lit && !hidden && blinkOn ? "var(--mobile-led)" : "#293445"}
+              opacity={
+                lit && !hidden && blinkOn ? 0.55 + (brightness / 100) * 0.45 : 1
+              }
+            />
+          )),
         )}
       </g>
     </svg>

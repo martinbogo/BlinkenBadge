@@ -13,7 +13,7 @@ Native test builds use the shared Rust encoder, project format, pixel fonts, dra
 | Copy previous frame | Frame Options > Copy Previous | Shared frame cloning |
 | All-slot and individual-slot playback | Preview > Playback | Scrub test reaches slot 8, frame 8 |
 | Playback speed, effects, all nine modes | Motion | Shared playback simulation and encoder |
-| Serif, Sans, Cartoon, Futuristic fonts | Text > Font; Canvas > Insert > Stamp Text | Font picker and face-selection test |
+| Ten pixel fonts, including Comic, Arcade, Terminal, Stencil, Outline, and Tiny | Text > Font; Canvas > Insert > Stamp Text | Ten-face picker and coverage tests |
 | Multiple fonts within one bitmap or frame | Insert > Stamp Text; choose a font for each stamp | Mixed-font stamping test preserves existing pixels |
 | Pixel pictographs | Text > Pictographs; Stamp Text > Pictographs | Shared shipped glyph palette |
 | Pencil, eraser, line, rectangle, ellipse, fill | Drawing Tool | Shared geometry; gesture tests |
@@ -26,6 +26,8 @@ Native test builds use the shared Rust encoder, project format, pixel fonts, dra
 | LED preview color | Project Options > LED Color | Shared palette; local preference |
 | Whole-project and single-slot files | Project Options; Slot Options > Export Slot | Shared `.badge` and `.badgemsg` codecs |
 | Brightness, enabled-slot upload, capacity | Send | Shared encoder; 64-frame transport specification test |
+
+Empty previews show all 484 unlit LEDs. The drawing screen keeps a full badge monitor visible above the canvas in portrait and beside it in landscape.
 
 The desktop model calls a slot a `Message`. A slot may contain text, a drawing, or an animation. Mobile retains this model; it does not flatten an animation into separate message slots.
 

@@ -623,3 +623,59 @@ html.mobile-layout #root {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* An unlit badge still reads as a physical matrix. */
+.mobile-badge {
+  background: #090d14;
+  border: 1px solid #344257;
+  border-radius: 12px;
+  padding: 10px;
+  shape-rendering: auto;
+}
+.mobile-app .mobile-empty-hint {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+}
+.mobile-drawing {
+  display: flex;
+  flex-direction: column;
+}
+.mobile-canvas-monitor {
+  width: 100%;
+  max-width: 380px;
+  align-self: center;
+  padding: 4px 20px 0;
+  flex: none;
+}
+.mobile-canvas-monitor > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--mobile-muted);
+  font-size: 12px;
+}
+.mobile-canvas-monitor button {
+  color: var(--mobile-accent);
+}
+.mobile-drawing .mobile-canvas-host {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+@media (min-width: 600px) and (max-height: 549px) {
+  .mobile-drawing {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
+  }
+  .mobile-canvas-monitor {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 0 12px;
+  }
+  .mobile-drawing .mobile-canvas-host {
+    grid-column: 1;
+    grid-row: 1;
+    height: 100%;
+  }
+}

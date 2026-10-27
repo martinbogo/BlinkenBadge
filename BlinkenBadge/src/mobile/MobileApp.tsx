@@ -679,12 +679,11 @@ export default function MobileApp() {
                           {m.enabled === false ? " · Off" : ""}
                         </span>
                       </div>
-                      {m.text?.value === "" ? (
-                        <span className="mobile-empty-message">
+                      <MiniBadge message={m} brightness={project.brightness} />
+                      {m.text?.value === "" && (
+                        <span className="mobile-empty-hint">
                           Tap to add text.
                         </span>
-                      ) : (
-                        <MiniBadge message={m} />
                       )}
                     </button>
                   ))}
@@ -717,7 +716,12 @@ export default function MobileApp() {
             {route === "text" && (
               <main className="mobile-content mobile-compose">
                 <div className="mobile-preview-panel">
-                  <MiniBadge message={active} step={step} />
+                  <MiniBadge
+                    message={active}
+                    step={playing ? step : undefined}
+                    playing={playing}
+                    brightness={project.brightness}
+                  />
                   <button
                     className="mobile-preview-play"
                     aria-label={playing ? "Pause Preview" : "Play Preview"}
@@ -792,6 +796,31 @@ export default function MobileApp() {
             {route === "draw" && (
               <>
                 <main className="mobile-drawing">
+                  <div className="mobile-canvas-monitor">
+                    <MiniBadge
+                      message={
+                        playing ? active : { ...active, frames: [frame] }
+                      }
+                      step={playing ? step : undefined}
+                      playing={playing}
+                      brightness={project.brightness}
+                    />
+                    <div>
+                      <span>
+                        {active.mode === "animation"
+                          ? `Frame ${frameIndex + 1} of ${active.frames.length}`
+                          : "Display Preview"}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setPlaying((value) => !value);
+                          setStep(frameIndex);
+                        }}
+                      >
+                        {playing ? "Pause" : "Play"}
+                      </button>
+                    </div>
+                  </div>
                   <MobileCanvas
                     key={active.id}
                     frame={frame}
@@ -880,7 +909,12 @@ export default function MobileApp() {
                 )}
                 {playing && (
                   <div className="mobile-animation-preview">
-                    <MiniBadge message={active} step={step} />
+                    <MiniBadge
+                      message={active}
+                      step={playing ? step : undefined}
+                      playing={playing}
+                      brightness={project.brightness}
+                    />
                   </div>
                 )}
                 <footer className="mobile-drawing-tools">
