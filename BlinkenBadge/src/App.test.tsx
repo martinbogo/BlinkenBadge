@@ -10,7 +10,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Platform } from "./platform/types";
+import type { Platform, Recovery } from "./platform/types";
 import { newMessage } from "./badge";
 import { serializeProject } from "./doc";
 
@@ -22,7 +22,7 @@ const host = vi.hoisted(() => ({
   onUsbPresence: vi.fn(() => () => {}),
   onSendProgress: vi.fn(() => () => {}),
   takePendingFiles: vi.fn(async (): Promise<string[]> => []),
-  recoveryRead: vi.fn(async () => null),
+  recoveryRead: vi.fn(async (): Promise<Recovery | null> => null),
   recoveryWrite: vi.fn(async () => {}),
   recoveryClear: vi.fn(async () => {}),
   onMenu: vi.fn(() => () => {}),
@@ -141,6 +141,70 @@ describe("editor regressions", () => {
     expect(host.takePendingFiles).toHaveBeenCalledOnce();
     expect(host.readText).toHaveBeenCalledOnce();
   });
+  it("keeps the modal blocking edits until an asynchronous save finishes", async () => {
+    const user = userEvent.setup();
+    let finish!: () => void;
+    host.pickSave.mockResolvedValue("saved.badge");
+    host.writeText.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderApp();
+    fireEvent.change(screen.getByRole("textbox", { name: "Message Name" }), {
+      target: { value: "Unsaved" },
+    });
+    await user.click(screen.getByRole("button", { name: "New" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(dialog.getAttribute("aria-busy")).toBe("true");
+    expect(
+      (
+        within(dialog).getByRole("button", {
+          name: "Discard",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Message Name",
+          hidden: true,
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Unsaved");
+    finish();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Message Name",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Untitled");
+  });
+
+  it("keeps the existing recovery copy after restoring an untitled web draft", async () => {
+    const user = userEvent.setup();
+    const m = { ...newMessage(), name: "Recovered" };
+    host.recoveryRead.mockResolvedValue({
+      json: serializeProject({ brightness: 100, messages: [m] }),
+      path: "old.badge\u00001",
+      saved_at: new Date().toISOString(),
+    });
+    renderApp();
+    await user.click(await screen.findByRole("button", { name: "Restore" }));
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Message Name",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Recovered");
+    expect(host.recoveryClear).not.toHaveBeenCalled();
+  });
+
   it("ignores a corrupt LED preference instead of crashing", () => {
     localStorage.setItem("badge-led", "unknown-color");
     renderApp();

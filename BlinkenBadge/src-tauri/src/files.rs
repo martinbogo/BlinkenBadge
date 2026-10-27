@@ -209,11 +209,15 @@ pub fn recovery_read(app: AppHandle) -> Result<Option<Recovery>, String> {
     let text = read_text_at(&p)?;
     // A corrupt autosave is not worth an error dialog on startup. Treat it as
     // nothing to recover and let the user get on with their day.
-    let rec: Option<Recovery> = serde_json::from_str(&text).ok();
-    if let Some(ref rec) = rec {
+    let mut rec: Option<Recovery> = serde_json::from_str(&text).ok();
+    if let Some(ref mut rec) = rec {
         if let Some(ref path) = rec.path {
-            app.state::<FileAccess>()
-                .grant(Path::new(path), DocumentKind::Project)?;
+            // A moved or deleted directory must not hide recoverable artwork.
+            rec.path = app
+                .state::<FileAccess>()
+                .grant(Path::new(path), DocumentKind::Project)
+                .ok()
+                .map(|path| path.display().to_string());
         }
     }
     Ok(rec)

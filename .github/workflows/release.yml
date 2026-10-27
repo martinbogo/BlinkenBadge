@@ -196,11 +196,10 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - name: Install jsign and osslsigncode
+      - name: Install jsign
         run: |
           curl -fsSLo jsign.jar "https://github.com/ebourg/jsign/releases/download/$JSIGN/jsign-$JSIGN.jar"
           echo "$JSIGN_SHA256  jsign.jar" | sha256sum -c
-          sudo apt-get update -qq && sudo apt-get install -y -qq osslsigncode >/dev/null
       - name: Sign
         run: |
           token=$(az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv)
@@ -216,13 +215,6 @@ jobs:
               --tsmode RFC3161 \
               "$f"
           done
-      - name: Verify installer signatures and timestamps
-        run: |
-          for f in windows/*.exe windows/*.msi; do
-            [ -f "$f" ] || continue
-            osslsigncode verify -in "$f" -CAfile /etc/ssl/certs/ca-certificates.crt \
-              -TSA-CAfile /etc/ssl/certs/ca-certificates.crt
-          done
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: windows-x86_64
@@ -230,8 +222,41 @@ jobs:
           overwrite: true
           if-no-files-found: error
 
-  release:
+  verify-windows:
+    name: Verify Windows signatures
     needs: [build, sign-windows]
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.sign-windows.result == 'success' || (github.repository == 'martinbogo/BlinkenBadge' && github.event_name == 'workflow_dispatch')) }}
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        if: needs.sign-windows.result == 'success'
+        with:
+          name: windows-x86_64
+          path: windows
+      - name: Download published installers for unsigned smoke runs
+        if: needs.sign-windows.result == 'skipped'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download --repo "$env:GITHUB_REPOSITORY" --pattern '*.exe' --pattern '*.msi' --dir windows
+      - name: Verify Authenticode trust, publisher, and timestamp
+        run: ./scripts/verify-windows-signatures.ps1 -Path windows
+      - name: Verify tampering is rejected
+        run: |
+          $original = Get-ChildItem windows/*.exe | Select-Object -First 1
+          $bytes = [System.IO.File]::ReadAllBytes($original.FullName)
+          $bytes[4096] = $bytes[4096] -bxor 1
+          $tampered = Join-Path $env:RUNNER_TEMP 'tampered-installer.exe'
+          [System.IO.File]::WriteAllBytes($tampered, $bytes)
+          if ((Get-AuthenticodeSignature -LiteralPath $tampered).Status -eq 'Valid') {
+            throw 'Tampered installer was accepted.'
+          }
+
+  release:
+    needs: [build, sign-windows, verify-windows]
     if: github.repository == 'martinbogo/BlinkenBadge' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
     timeout-minutes: 10

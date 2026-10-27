@@ -115,7 +115,7 @@ Signing runs in the `sign-windows` job on `ubuntu-24.04` via the `release` GitHu
 | Publisher Identity | `CN=Martin Bogomolni, O=Martin Bogomolni, L=Portland, ST=or, C=US` |
 | Timestamp Authority | `http://timestamp.acs.microsoft.com` (RFC3161) |
 | Tool | `jsign 7.5` (`java -jar jsign.jar --storetype TRUSTEDSIGNING ...`) |
-| Verification | `osslsigncode verify` with system certificate and timestamp trust stores |
+| Verification | Windows `Get-AuthenticodeSignature` with valid trust, publisher, and timestamp checks |
 
 ## Release Procedure
 
