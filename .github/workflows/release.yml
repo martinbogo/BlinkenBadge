@@ -168,8 +168,72 @@ jobs:
           if-no-files-found: error
           path: staging/*
 
-  release:
+  # The Windows installers, signed with Azure Artifact Signing (account lilykvm,
+  # profile lilykvm-public, West US). No stored secret: azure/login trades
+  # GitHub's OIDC token for one of app lilykvm-ci-signing, which trusts only
+  # the release environment (v* tags, main) and may only sign. The IDs are
+  # variables of that environment.
+  sign-windows:
+    name: Sign Windows installers
     needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      JSIGN: "7.5"
+      JSIGN_SHA256: 602a51c3545a6dc4fb99bd2ea7152b26d1345916d0c93ddfbd5936cb735af91c
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: windows-x86_64
+          path: windows
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Install jsign and osslsigncode
+        run: |
+          curl -fsSLo jsign.jar "https://github.com/ebourg/jsign/releases/download/$JSIGN/jsign-$JSIGN.jar"
+          echo "$JSIGN_SHA256  jsign.jar" | sha256sum -c
+          sudo apt-get update -qq && sudo apt-get install -y -qq osslsigncode >/dev/null
+      - name: Sign
+        run: |
+          token=$(az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv)
+          echo "::add-mask::$token"
+          for f in windows/*.exe windows/*.msi; do
+            [ -f "$f" ] || continue
+            echo "Signing $f"
+            java -jar jsign.jar --storetype TRUSTEDSIGNING \
+              --keystore wus.codesigning.azure.net \
+              --storepass "$token" \
+              --alias lilykvm/lilykvm-public \
+              --tsaurl http://timestamp.acs.microsoft.com \
+              --tsmode RFC3161 \
+              "$f"
+          done
+      - name: Check the signatures
+        run: |
+          for f in windows/*.exe windows/*.msi; do
+            [ -f "$f" ] || continue
+            rm -f sig.der # osslsigncode won't overwrite it
+            osslsigncode extract-signature -in "$f" -out sig.der >/dev/null
+            echo "$f:"
+            openssl pkcs7 -inform DER -in sig.der -print_certs -noout | grep -m1 '^subject='
+          done
+          rm -f sig.der
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows-x86_64
+          path: windows/*
+          overwrite: true
+          if-no-files-found: error
+
+  release:
+    needs: [build, sign-windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

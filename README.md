@@ -23,9 +23,7 @@ Prebuilt packages are available on the [Releases](../../releases) page.
 
 macOS builds are signed, notarized, and compiled for Apple Silicon (aarch64). Intel Macs require building from source.
 
-Windows builds are unsigned. To bypass Windows SmartScreen:
-1. Select **More info**.
-2. Select **Run anyway**.
+Windows builds are signed with Microsoft Trusted Signing (Publisher: Martin Bogomolni).
 
 Linux builds target glibc 2.35 or newer (Ubuntu 22.04+). The `.deb` and `.rpm` packages declare system dependencies automatically. The `.tar.gz` archive contains only the executable and requires system package `webkit2gtk-4.1`.
 
@@ -245,6 +243,18 @@ To export credentials from macOS Keychain into GitHub secrets:
    ```bash
    ./scripts/setup-macos-signing.sh certificate.p12
    ```
+
+### Windows Code Signing
+
+Windows builds are signed via Azure Artifact Signing using the `release` GitHub Actions environment:
+
+| Variable | Description |
+|---|---|
+| `AZURE_CLIENT_ID` | Application (client) ID for workload identity federation |
+| `AZURE_TENANT_ID` | Directory (tenant) ID |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
+
+The Azure application `lilykvm-ci-signing` holds the Certificate Profile Signer role and trusts the `release` environment via federated credentials. No secrets are stored.
 
 ## Protocol
 
