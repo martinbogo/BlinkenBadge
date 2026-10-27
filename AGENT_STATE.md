@@ -11,7 +11,7 @@ This document records repository state, architectural boundaries, hardware speci
 | Compatibility Symlink | `/Users/martin/Development/badge_studio -> /Users/martin/Development/BlinkenBadge` |
 | Remote Repository | `git@github.com:martinbogo/BlinkenBadge.git` |
 | Default Branch | `main` |
-| Current Version | `1.0.41` |
+| Current Version | `1.0.50` |
 
 ## Directory Layout
 
