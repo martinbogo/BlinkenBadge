@@ -395,6 +395,9 @@ describe("mobile desktop feature parity", () => {
     ).toBe("Animation 2");
     await user.click(screen.getByRole("button", { name: "Delete Slot" }));
     expect(screen.getByText(/Delete “Animation 2” from Slot 2/)).toBeTruthy();
+    expect(document.activeElement).toBe(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }),
+    );
     // Dismissing confirmation leaves all frames untouched.
     await user.click(
       within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }),
