@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pick-save"
+description = "Enables the pick_save command without any pre-configured scope."
+commands.allow = ["pick_save"]
+
+[[permission]]
+identifier = "deny-pick-save"
+description = "Denies the pick_save command without any pre-configured scope."
+commands.deny = ["pick_save"]

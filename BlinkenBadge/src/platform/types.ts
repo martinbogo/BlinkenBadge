@@ -137,5 +137,5 @@ export interface Platform {
    * In the browser this is `beforeunload`, which cannot ask a question, so it
    * can only prompt with the browser's own wording.
    */
-  onExitRequested(cb: () => void): () => void;
+  onExitRequested(cb: () => boolean): () => void;
 }

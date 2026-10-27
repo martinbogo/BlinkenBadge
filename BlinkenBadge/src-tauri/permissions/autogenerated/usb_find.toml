@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-usb-find"
+description = "Enables the usb_find command without any pre-configured scope."
+commands.allow = ["usb_find"]
+
+[[permission]]
+identifier = "deny-usb-find"
+description = "Denies the usb_find command without any pre-configured scope."
+commands.deny = ["usb_find"]

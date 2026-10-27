@@ -19,6 +19,9 @@
 //! inserts into the document. Same JSON underneath, but double-clicking a file
 //! in a file manager should never leave you guessing which of those happened.
 
+use crate::file_access::{
+    atomic_write, read_bounded, DocumentKind, FileAccess, MAX_DOCUMENT_BYTES,
+};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
@@ -76,6 +79,7 @@ fn recent_path(app: &AppHandle) -> Result<PathBuf, String> {
 
 #[tauri::command]
 pub async fn pick_open(app: AppHandle, kind: String) -> Result<Option<Opened>, String> {
+    let doc_kind = DocumentKind::parse(&kind)?;
     let (label, exts) = describe(&kind);
     let path = app
         .dialog()
@@ -86,7 +90,9 @@ pub async fn pick_open(app: AppHandle, kind: String) -> Result<Option<Opened>, S
     let path = path
         .into_path()
         .map_err(|e| format!("Could not resolve that file: {e}"))?;
-    let text = read_text_at(&path)?;
+    let path = app.state::<FileAccess>().grant(&path, doc_kind)?;
+    let text = String::from_utf8(read_bounded(&path, MAX_DOCUMENT_BYTES)?)
+        .map_err(|_| "File is not UTF-8 text.")?;
     push_recent(&app, &path, &kind);
     Ok(Some(Opened {
         path: path.display().to_string(),
@@ -100,6 +106,7 @@ pub async fn pick_save(
     kind: String,
     suggested: String,
 ) -> Result<Option<String>, String> {
+    let doc_kind = DocumentKind::parse(&kind)?;
     let (label, exts) = describe(&kind);
     let path = app
         .dialog()
@@ -121,17 +128,23 @@ pub async fn pick_save(
             .to_string();
         path.set_file_name(format!("{name}.{}", exts[0]));
     }
+    let path = app.state::<FileAccess>().grant(&path, doc_kind)?;
     Ok(Some(path.display().to_string()))
 }
 
 fn read_text_at(path: &Path) -> Result<String, String> {
-    std::fs::read_to_string(path).map_err(|e| format!("Could not read {}: {e}", path.display()))
+    String::from_utf8(read_bounded(path, MAX_DOCUMENT_BYTES * 2 + 8192)?)
+        .map_err(|_| "File is not UTF-8 text.".into())
 }
 
 #[tauri::command]
 pub fn read_text(app: AppHandle, path: String, kind: Option<String>) -> Result<String, String> {
-    let p = PathBuf::from(&path);
-    let text = read_text_at(&p)?;
+    let doc_kind = DocumentKind::parse(kind.as_deref().unwrap_or("project"))?;
+    let p = app
+        .state::<FileAccess>()
+        .authorized(Path::new(&path), doc_kind)?;
+    let text = String::from_utf8(read_bounded(&p, MAX_DOCUMENT_BYTES)?)
+        .map_err(|_| "File is not UTF-8 text.")?;
     push_recent(&app, &p, kind.as_deref().unwrap_or("project"));
     Ok(text)
 }
@@ -143,8 +156,14 @@ pub fn write_text(
     contents: String,
     kind: Option<String>,
 ) -> Result<(), String> {
-    let p = PathBuf::from(&path);
-    std::fs::write(&p, contents).map_err(|e| format!("Could not write {}: {e}", p.display()))?;
+    let doc_kind = DocumentKind::parse(kind.as_deref().unwrap_or("project"))?;
+    let p = app
+        .state::<FileAccess>()
+        .authorized(Path::new(&path), doc_kind)?;
+    if contents.len() > MAX_DOCUMENT_BYTES {
+        return Err("Document exceeds the 8 MiB limit.".into());
+    }
+    atomic_write(&p, contents.as_bytes())?;
     push_recent(&app, &p, kind.as_deref().unwrap_or("project"));
     Ok(())
 }
@@ -156,10 +175,29 @@ pub fn write_text(
 /// Never writes to the user's own file. An autosave that overwrote the document
 /// would turn a crash into data loss instead of protecting against it.
 #[tauri::command]
-pub fn recovery_write(app: AppHandle, json: String, path: Option<String>, saved_at: String) -> Result<(), String> {
-    let rec = Recovery { json, path, saved_at };
+pub fn recovery_write(
+    app: AppHandle,
+    json: String,
+    path: Option<String>,
+    saved_at: String,
+) -> Result<(), String> {
+    if saved_at.len() > 64 || path.as_ref().is_some_and(|p| p.len() > 4096) {
+        return Err("Recovery metadata exceeds the size limit.".into());
+    }
+    if json.len() > MAX_DOCUMENT_BYTES {
+        return Err("Document exceeds the 8 MiB limit.".into());
+    }
+    if let Some(ref p) = path {
+        app.state::<FileAccess>()
+            .authorized(Path::new(p), DocumentKind::Project)?;
+    }
+    let rec = Recovery {
+        json,
+        path,
+        saved_at,
+    };
     let text = serde_json::to_string(&rec).map_err(|e| e.to_string())?;
-    std::fs::write(recovery_path(&app)?, text).map_err(|e| format!("Could not autosave: {e}"))
+    atomic_write(&recovery_path(&app)?, text.as_bytes())
 }
 
 #[tauri::command]
@@ -171,7 +209,14 @@ pub fn recovery_read(app: AppHandle) -> Result<Option<Recovery>, String> {
     let text = read_text_at(&p)?;
     // A corrupt autosave is not worth an error dialog on startup. Treat it as
     // nothing to recover and let the user get on with their day.
-    Ok(serde_json::from_str(&text).ok())
+    let rec: Option<Recovery> = serde_json::from_str(&text).ok();
+    if let Some(ref rec) = rec {
+        if let Some(ref path) = rec.path {
+            app.state::<FileAccess>()
+                .grant(Path::new(path), DocumentKind::Project)?;
+        }
+    }
+    Ok(rec)
 }
 
 /// Called on a clean quit and after a successful save. Its absence at startup
@@ -198,7 +243,7 @@ pub fn recent_list(app: AppHandle) -> Vec<RecentEntry> {
     let Ok(p) = recent_path(&app) else {
         return Vec::new();
     };
-    let Ok(text) = std::fs::read_to_string(p) else {
+    let Ok(text) = read_text_at(&p) else {
         return Vec::new();
     };
     let list: Vec<RecentEntry> = serde_json::from_str(&text).unwrap_or_default();
@@ -230,7 +275,27 @@ fn push_recent(app: &AppHandle, path: &Path, kind: &str) {
     list.truncate(MAX_RECENT);
 
     if let (Ok(p), Ok(text)) = (recent_path(app), serde_json::to_string(&list)) {
-        let _ = std::fs::write(p, text);
+        let _ = atomic_write(&p, text.as_bytes());
     }
     crate::menu::rebuild(app);
+}
+
+/// Called only for paths supplied by native file-open and recent-menu events.
+pub fn grant_native(app: &AppHandle, path: &str) -> Result<String, String> {
+    let p = Path::new(path);
+    let kind = match p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some(PROJECT_EXT) => DocumentKind::Project,
+        Some(MESSAGE_EXT) => DocumentKind::Message,
+        _ => return Err("Unsupported document type.".into()),
+    };
+    Ok(app
+        .state::<FileAccess>()
+        .grant(p, kind)?
+        .display()
+        .to_string())
 }

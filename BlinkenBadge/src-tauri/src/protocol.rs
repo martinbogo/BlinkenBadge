@@ -159,11 +159,7 @@ impl Stamp {
 }
 
 /// Serialize up to 8 messages into the byte stream written to characteristic 0xFEE1.
-pub fn pack(
-    messages: &[Message],
-    brightness: u8,
-    stamp: Stamp,
-) -> Result<Vec<u8>, ProtocolError> {
+pub fn pack(messages: &[Message], brightness: u8, stamp: Stamp) -> Result<Vec<u8>, ProtocolError> {
     if messages.is_empty() {
         return Err(ProtocolError::NoMessages);
     }
@@ -227,7 +223,11 @@ pub fn pixels_to_bitmap(rows: &[Vec<bool>]) -> (Vec<u8>, usize) {
             let mut byte = 0u8;
             for bit in 0..8 {
                 let x = col * 8 + bit;
-                let on = rows.get(row).and_then(|r| r.get(x)).copied().unwrap_or(false);
+                let on = rows
+                    .get(row)
+                    .and_then(|r| r.get(x))
+                    .copied()
+                    .unwrap_or(false);
                 if on {
                     byte |= 1 << (7 - bit);
                 }
@@ -414,7 +414,11 @@ mod width_tests {
         for frame in 0..2 {
             let col_44 = frame * FRAME_WIDTH + 44;
             let byte = bytes[(col_44 / 8) * BADGE_HEIGHT];
-            assert_eq!(byte & 0x0F, 0, "columns 44-47 of frame {frame} must be padding");
+            assert_eq!(
+                byte & 0x0F,
+                0,
+                "columns 44-47 of frame {frame} must be padding"
+            );
         }
     }
 
@@ -475,7 +479,10 @@ mod brightness_tests {
                 ants: false,
             };
             let out = pack(&[m], percent, Stamp::now()).unwrap();
-            assert_eq!(out[5], expected, "{percent}% should encode as {expected:#04x}");
+            assert_eq!(
+                out[5], expected,
+                "{percent}% should encode as {expected:#04x}"
+            );
         }
     }
 }
@@ -510,7 +517,10 @@ mod text_length_tests {
         assert!(pack(&eight, 100, Stamp::now()).is_ok());
 
         println!("hard ceiling: {MAX_BYTE_COLUMNS} characters in one upload");
-        println!("  = {} bytes", HEADER_SIZE + MAX_BYTE_COLUMNS * BADGE_HEIGHT);
+        println!(
+            "  = {} bytes",
+            HEADER_SIZE + MAX_BYTE_COLUMNS * BADGE_HEIGHT
+        );
         println!("split across 8 messages: {each} characters each");
     }
 }

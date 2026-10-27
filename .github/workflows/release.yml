@@ -10,8 +10,12 @@ on:
       - "v*"
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
-  contents: write
+  contents: read
 
 env:
   # Every runner builds natively, so no --target is passed and the bundle path
@@ -22,29 +26,28 @@ jobs:
   # A tag that disagrees with the manifests would produce installers whose
   # filenames contradict the release they are attached to. Fail early instead.
   check-version:
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
-      - name: Tag must match the version in the manifests
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate versions and release source
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          PKG=$(node -p "require('./BlinkenBadge/package.json').version")
-          CARGO=$(grep -m1 '^version' BlinkenBadge/src-tauri/Cargo.toml | cut -d'"' -f2)
-          CONF=$(node -p "require('./BlinkenBadge/src-tauri/tauri.conf.json').version")
-          echo "tag=$TAG package.json=$PKG Cargo.toml=$CARGO tauri.conf.json=$CONF"
-          for V in "$PKG" "$CARGO" "$CONF"; do
-            if [ "$V" != "$TAG" ]; then
-              echo "::error::Tag v$TAG does not match version $V. Bump the manifests or retag."
-              exit 1
-            fi
-          done
+          node scripts/check-version.mjs
+          if [ "$IS_TAG" = "true" ]; then
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          fi
+
+  checks:
+    uses: ./.github/workflows/checks.yml
 
   build:
-    needs: [check-version]
-    # `always()` lets a manual run proceed even though check-version is skipped
-    # off-tag; the guard still blocks a mismatched tag.
-    if: always() && needs.check-version.result != 'failure'
+    needs: [check-version, checks]
     strategy:
       fail-fast: false
       matrix:
@@ -57,33 +60,28 @@ jobs:
             label: windows-x86_64
 
     runs-on: ${{ matrix.os }}
+    environment:
+      name: ${{ matrix.os == 'macos-latest' && github.repository == 'martinbogo/BlinkenBadge' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && 'release' || 'build' }}
 
-    # macOS code signing and notarization. Every one of these is optional: with
-    # the secrets unset they are empty strings, Tauri skips signing, and the
-    # build still succeeds unsigned. That is what happens on a fork, and what
-    # happened before the certificate existed.
-    env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          node-version: 20
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
           cache: npm
           cache-dependency-path: BlinkenBadge/package-lock.json
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: BlinkenBadge/src-tauri
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # webkit2gtk 4.1 is the Tauri v2 webview. libudev is needed by hidapi's
       # hidraw backend, which is how the badge is reached over USB.
@@ -100,35 +98,37 @@ jobs:
         working-directory: BlinkenBadge
         run: npm ci
 
-      # The suites are deliberately not run here. checks.yml runs them on every
-      # push, including the push of this tag, so they have already passed on
-      # this exact commit. Running them again cost two minutes on Windows and
-      # bought nothing: `cargo test --release` compiles the crate, then
-      # tauri-action recompiles it, because the frontend build in between
-      # changes what the build script sees. Two full release compiles for one
-      # set of installers.
-      #
-      # What stops a broken commit shipping is not a second test run: it is
-      # that the release is created as a draft and published by hand.
+      - name: Build unsigned installers
+        if: runner.os != 'macOS' || github.repository != 'martinbogo/BlinkenBadge' || (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v'))
+        working-directory: BlinkenBadge
+        run: npm run tauri -- build -- --locked
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build and notarize macOS installers
+        if: runner.os == 'macOS' && github.repository == 'martinbogo/BlinkenBadge' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        working-directory: BlinkenBadge
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: BlinkenBadge
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for key in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing required macOS signing credential: $key"
+              exit 1
+            fi
+          done
+          npm run tauri -- build -- --locked
 
-      - name: Verify macOS signature
-        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != ''
+      - name: Verify macOS signature and notarization
+        if: runner.os == 'macOS' && github.repository == 'martinbogo/BlinkenBadge' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         run: |
           APP="$BUNDLE/macos/BlinkenBadge.app"
-          echo "--- codesign ---"
           codesign --verify --deep --strict --verbose=2 "$APP"
-          echo "--- identity ---"
-          codesign -dvv "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|flags'
-          # Reports "Notarized Developer ID" once notarization has stapled.
-          # Informational: a valid signature is the hard requirement here.
-          echo "--- gatekeeper ---"
-          spctl -a -t exec -vvv "$APP" || true
+          xcrun stapler validate "$APP"
+          spctl -a -t exec -vvv "$APP"
 
       # Tauri has no tarball target, so build one from the bare binary. It has
       # no bundled webview and relies on the system webkit2gtk, which is why
@@ -162,7 +162,7 @@ jobs:
           for f in *.tar.gz; do [ -f "$f" ] && cp "$f" staging/; done
           ls -lh staging
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: ${{ matrix.label }}
           if-no-files-found: error
@@ -176,8 +176,9 @@ jobs:
   sign-windows:
     name: Sign Windows installers
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    if: github.repository == 'martinbogo/BlinkenBadge' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     environment: release
     permissions:
       contents: read
@@ -186,11 +187,11 @@ jobs:
       JSIGN: "7.5"
       JSIGN_SHA256: 602a51c3545a6dc4fb99bd2ea7152b26d1345916d0c93ddfbd5936cb735af91c
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: windows-x86_64
           path: windows
-      - uses: azure/login@v3
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -215,17 +216,14 @@ jobs:
               --tsmode RFC3161 \
               "$f"
           done
-      - name: Check the signatures
+      - name: Verify installer signatures and timestamps
         run: |
           for f in windows/*.exe windows/*.msi; do
             [ -f "$f" ] || continue
-            rm -f sig.der # osslsigncode won't overwrite it
-            osslsigncode extract-signature -in "$f" -out sig.der >/dev/null
-            echo "$f:"
-            openssl pkcs7 -inform DER -in sig.der -print_certs -noout | grep -m1 '^subject='
+            osslsigncode verify -in "$f" -CAfile /etc/ssl/certs/ca-certificates.crt \
+              -TSA-CAfile /etc/ssl/certs/ca-certificates.crt
           done
-          rm -f sig.der
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: windows-x86_64
           path: windows/*
@@ -234,16 +232,22 @@ jobs:
 
   release:
     needs: [build, sign-windows]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    if: github.repository == 'martinbogo/BlinkenBadge' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           path: dist
           merge-multiple: true
 
-      - name: List what will be published
-        run: ls -lh dist
+      - name: Generate release checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS
+          sha256sum --check SHA256SUMS
 
       - name: Publish release
         env:
@@ -256,38 +260,3 @@ jobs:
             --draft \
             dist/*
           echo "Draft release created. Review it, then publish from the Releases page."
-
-  # A tag-triggered run stores its caches under that tag's ref, and a tag never
-  # runs again, so they can never be read. They are not merely useless: the
-  # repository cache is capped, and once it fills GitHub evicts by least
-  # recent use, which eventually throws away the caches on main that every
-  # build actually restores from. Five old tags had already accumulated about
-  # a gigabyte of this.
-  #
-  # Deleting only tag-scoped caches on purpose. Branch and pull-request caches
-  # belong to work still in progress.
-  prune-caches:
-    needs: [release]
-    if: always() && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - name: Drop caches scoped to a tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          gh cache list --limit 100 --json id,ref,key > caches.json
-          jq -r '.[] | select(.ref | contains("refs/tags/")) | "\(.id)\t\(.key)"' caches.json > doomed.txt
-          if [ ! -s doomed.txt ]; then
-            echo "No tag-scoped caches to remove."
-            exit 0
-          fi
-          while IFS=$'\t' read -r id key; do
-            echo "removing $key"
-            gh cache delete "$id" || echo "  already gone"
-          done < doomed.txt
-          echo
-          gh api repos/${GH_REPO}/actions/cache/usage \
-            --jq '"now \(.active_caches_count) caches, \(.active_caches_size_in_bytes/1048576|floor) MB"'

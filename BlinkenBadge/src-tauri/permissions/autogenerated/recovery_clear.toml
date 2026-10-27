@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-recovery-clear"
+description = "Enables the recovery_clear command without any pre-configured scope."
+commands.allow = ["recovery_clear"]
+
+[[permission]]
+identifier = "deny-recovery-clear"
+description = "Denies the recovery_clear command without any pre-configured scope."
+commands.deny = ["recovery_clear"]

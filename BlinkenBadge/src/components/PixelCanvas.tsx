@@ -162,16 +162,17 @@ export default function PixelCanvas({
           return [];
       }
     },
-    [tool, brushSize, filled]
+    [tool, brushSize, filled],
   );
 
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
     const { on: ON, onion: ONION } = ledPalette(led);
-    const dpr = window.devicePixelRatio || 1;
     const w = width * cell;
     const h = BADGE_HEIGHT * cell;
+    // Wide scrolling messages must stay within browser canvas backing limits.
+    const dpr = Math.min(window.devicePixelRatio || 1, 16384 / w, 16384 / h);
     cv.width = w * dpr;
     cv.height = h * dpr;
     cv.style.width = `${w}px`;
@@ -193,7 +194,7 @@ export default function PixelCanvas({
         d.lifted,
         d.liftedFrom.x0 + dx,
         d.liftedFrom.y0 + dy,
-        true
+        true,
       );
     }
 
@@ -273,7 +274,7 @@ export default function PixelCanvas({
         marquee.x0 * cell + 0.5,
         marquee.y0 * cell + 0.5,
         (marquee.x1 - marquee.x0 + 1) * cell - 1,
-        (marquee.y1 - marquee.y0 + 1) * cell - 1
+        (marquee.y1 - marquee.y0 + 1) * cell - 1,
       );
       ctx.setLineDash([]);
     }
@@ -299,7 +300,7 @@ export default function PixelCanvas({
       if (x < 0 || y < 0 || x >= width || y >= BADGE_HEIGHT) return null;
       return { x, y };
     },
-    [cell, width]
+    [cell, width],
   );
 
   const freehandTo = useCallback(
@@ -312,9 +313,12 @@ export default function PixelCanvas({
       const path = first ? [p] : linePoints(d.current, p);
       lastCell.current = key;
       d.current = p;
-      onChange(applyPoints(frame, expandBrush(path, brushSize), d.value), first);
+      onChange(
+        applyPoints(frame, expandBrush(path, brushSize), d.value),
+        first,
+      );
     },
-    [frame, brushSize, onChange]
+    [frame, brushSize, onChange],
   );
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -405,9 +409,9 @@ export default function PixelCanvas({
             d.lifted,
             d.liftedFrom.x0 + dx,
             d.liftedFrom.y0 + dy,
-            true
+            true,
           ),
-          true
+          true,
         );
         onSelectionChange({
           x0: d.liftedFrom.x0 + dx,
@@ -426,6 +430,7 @@ export default function PixelCanvas({
         <canvas
           ref={canvasRef}
           className={`pixel-canvas tool-${tool}`}
+          aria-label={`${width} by ${BADGE_HEIGHT} pixel drawing canvas`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={finish}

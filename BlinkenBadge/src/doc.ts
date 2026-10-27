@@ -27,6 +27,12 @@
  * has to produce a sentence the user can act on rather than a blank window.
  */
 import {
+  MAX_BITMAP_WIDTH,
+  MAX_PROJECT_PIXELS,
+  checkDocumentSize,
+} from "./limits";
+
+import {
   ANIMATION_MAX_FRAMES,
   BADGE_HEIGHT,
   BADGE_WIDTH,
@@ -109,13 +115,13 @@ function storeMessage(m: Message): StoredMessage {
 }
 
 function checkVersion(v: unknown, what: string) {
-  if (typeof v !== "number") {
+  if (!Number.isSafeInteger(v) || (v as number) < 1) {
     throw new DocError(`This does not look like a BlinkenBadge ${what}.`);
   }
-  if (v > DOC_VERSION) {
+  if ((v as number) > DOC_VERSION) {
     throw new DocError(
       `This ${what} was written by a newer version of BlinkenBadge ` +
-        `(format ${v}, this build reads ${DOC_VERSION}). Update the app to open it.`
+        `(format ${v}, this build reads ${DOC_VERSION}). Update the app to open it.`,
     );
   }
 }
@@ -134,6 +140,16 @@ function encodeFrame(f: Frame): string[] {
 function decodeFrame(f: unknown, where: string): Frame | null {
   if (!Array.isArray(f) || f.length !== BADGE_HEIGHT) return null;
 
+  if (
+    !f.every(
+      (row) =>
+        (typeof row === "string" || Array.isArray(row)) &&
+        row.length <= MAX_BITMAP_WIDTH,
+    )
+  ) {
+    throw new DocError(`Frame exceeds ${MAX_BITMAP_WIDTH} columns.`);
+  }
+
   if (f.every((row) => typeof row === "string")) {
     const rows = f as string[];
     return rows.map((row) => {
@@ -141,7 +157,7 @@ function decodeFrame(f: unknown, where: string): Frame | null {
         if (c !== LIT && c !== DARK && c !== "1" && c !== "0") {
           throw new DocError(
             `${where} has a pixel row containing ${JSON.stringify(c)}. ` +
-              `Rows use "${LIT}" for a lit pixel and "${DARK}" for a dark one.`
+              `Rows use "${LIT}" for a lit pixel and "${DARK}" for a dark one.`,
           );
         }
       }
@@ -163,8 +179,15 @@ function readMessage(raw: unknown, index: number): Message {
   }
   const m = raw as Partial<Message>;
 
-  const mode: Mode = MODES.includes(m.mode as Mode) ? (m.mode as Mode) : "scroll_left";
+  const mode: Mode = MODES.includes(m.mode as Mode)
+    ? (m.mode as Mode)
+    : "scroll_left";
   const rawFrames = Array.isArray(m.frames) ? (m.frames as unknown[]) : [];
+  if (rawFrames.length > ANIMATION_MAX_FRAMES) {
+    throw new DocError(
+      `${where} has too many frames; a slot holds ${ANIMATION_MAX_FRAMES}.`,
+    );
+  }
   if (!rawFrames.length) {
     throw new DocError(`${where} has no frames.`);
   }
@@ -172,7 +195,7 @@ function readMessage(raw: unknown, index: number): Message {
   const decoded = rawFrames.map((f) => decodeFrame(f, where));
   if (decoded.some((f) => f === null)) {
     throw new DocError(
-      `${where} has a frame that is not ${BADGE_HEIGHT} rows of pixels.`
+      `${where} has a frame that is not ${BADGE_HEIGHT} rows of pixels.`,
     );
   }
   const frames = decoded as Frame[];
@@ -186,7 +209,7 @@ function readMessage(raw: unknown, index: number): Message {
   if (!frames.every((f) => f.every((row) => row.length === width))) {
     throw new DocError(
       `${where} has frames of inconsistent size. Every frame must be ` +
-        `${BADGE_HEIGHT} rows of ${width} pixels.`
+        `${BADGE_HEIGHT} rows of ${width} pixels.`,
     );
   }
   // Projects saved before the editor moved to display width hold 48px frames,
@@ -201,7 +224,7 @@ function readMessage(raw: unknown, index: number): Message {
 
   if (mode === "animation" && frames.length > ANIMATION_MAX_FRAMES) {
     throw new DocError(
-      `${where} has ${frames.length} frames; a slot holds ${ANIMATION_MAX_FRAMES}.`
+      `${where} has ${frames.length} frames; a slot holds ${ANIMATION_MAX_FRAMES}.`,
     );
   }
 
@@ -209,7 +232,10 @@ function readMessage(raw: unknown, index: number): Message {
     id: typeof m.id === "string" && m.id ? m.id : `m${Date.now()}${index}`,
     name: typeof m.name === "string" ? m.name : `Message ${index + 1}`,
     mode,
-    speed: typeof m.speed === "number" && m.speed >= 1 && m.speed <= 8 ? m.speed : 4,
+    speed:
+      Number.isInteger(m.speed) && m.speed! >= 1 && m.speed! <= 8
+        ? m.speed!
+        : 4,
     blink: Boolean(m.blink),
     ants: Boolean(m.ants),
     frames: out,
@@ -223,9 +249,14 @@ function readMessage(raw: unknown, index: number): Message {
 export function parseProject(text: string): Project {
   let raw: unknown;
   try {
+    checkDocumentSize(text);
     raw = JSON.parse(text);
-  } catch {
-    throw new DocError("That file is not valid JSON.");
+  } catch (e) {
+    throw new DocError(
+      e instanceof SyntaxError
+        ? "That file is not valid JSON."
+        : String((e as Error).message),
+    );
   }
   if (!raw || typeof raw !== "object") {
     throw new DocError("That file is empty or not a project.");
@@ -234,7 +265,7 @@ export function parseProject(text: string): Project {
   if (doc.kind === "message") {
     throw new DocError(
       `That is a single message, not a project. Use File > Import Message to ` +
-        `add it to the current project.`
+        `add it to the current project.`,
     );
   }
   checkVersion(doc.version, "project");
@@ -245,32 +276,68 @@ export function parseProject(text: string): Project {
   }
   if (list.length > MAX_MESSAGES) {
     throw new DocError(
-      `That project has ${list.length} messages; the badge holds ${MAX_MESSAGES}.`
+      `That project has ${list.length} messages; the badge holds ${MAX_MESSAGES}.`,
     );
   }
 
   const brightness: Brightness = ([25, 50, 75, 100] as number[]).includes(
-    doc.brightness as number
+    doc.brightness as number,
   )
     ? (doc.brightness as Brightness)
     : 100;
 
-  return { brightness, messages: list.map(readMessage) };
+  // Budget rows before turning them into boolean arrays.
+  let pixels = 0;
+  for (const raw of list) {
+    if (
+      raw &&
+      typeof raw === "object" &&
+      Array.isArray((raw as StoredMessage).frames)
+    ) {
+      for (const frame of (raw as StoredMessage).frames) {
+        if (Array.isArray(frame))
+          for (const row of frame) {
+            if (typeof row === "string" || Array.isArray(row))
+              pixels += row.length;
+          }
+      }
+    }
+  }
+  if (pixels > MAX_PROJECT_PIXELS)
+    throw new DocError("Project exceeds the pixel limit.");
+  const messages = list.map(readMessage);
+  const ids = new Set<string>();
+  for (const m of messages) {
+    if (ids.has(m.id))
+      throw new DocError("Project contains duplicate message IDs.");
+    ids.add(m.id);
+  }
+  return { brightness, messages };
 }
 
 export function parseMessage(text: string): Message {
   let raw: unknown;
   try {
+    checkDocumentSize(text);
     raw = JSON.parse(text);
-  } catch {
-    throw new DocError("That file is not valid JSON.");
+  } catch (e) {
+    throw new DocError(
+      e instanceof SyntaxError
+        ? "That file is not valid JSON."
+        : String((e as Error).message),
+    );
   }
-  const doc = raw as Partial<MessageFile> & { kind?: string; messages?: unknown[] };
+  if (!raw || typeof raw !== "object")
+    throw new DocError("That is not a message.");
+  const doc = raw as Partial<MessageFile> & {
+    kind?: string;
+    messages?: unknown[];
+  };
   if (doc.kind !== "message") {
     // A project dropped on the import path is a likely enough slip to name.
     if (Array.isArray(doc.messages)) {
       throw new DocError(
-        "That is a whole project, not a single message. Use File > Open Project."
+        "That is a whole project, not a single message. Use File > Open Project.",
       );
     }
     throw new DocError("That does not look like a BlinkenBadge message.");
@@ -301,12 +368,12 @@ export function serializeMessage(m: Message): string {
 /** The filename without directories or extension, for titles and Save As. */
 export function baseName(path: string | null): string | null {
   if (!path) return null;
-  const file = path.split(/[\\/]/).pop() ?? path;
+  const file = path.split("\0")[0].split(/[\\/]/).pop() ?? path;
   return file.replace(/\.(badge|badgemsg)$/i, "");
 }
 
 /** Strip characters that are awkward in filenames on some platform or other. */
 export function safeFileName(name: string, fallback: string): string {
-  const clean = name.replace(/[\\/:*?"<>|]/g, "").trim();
+  const clean = name.replace(/[\x00-\x1f\x7f\\/:*?"<>|]/g, "").trim();
   return clean || fallback;
 }

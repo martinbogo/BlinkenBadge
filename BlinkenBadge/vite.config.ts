@@ -2,13 +2,11 @@ import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 // Which host the editor is built against. The unused implementation is not
 // bundled, so the desktop build carries no font table and the web build
 // carries no Tauri client.
-// @ts-expect-error process is a nodejs global
 const target = process.env.BADGE_TARGET === "web" ? "web" : "tauri";
 
 // https://vite.dev/config/
@@ -19,16 +17,36 @@ export default defineConfig(async () => ({
   // webview, so it keeps the default.
   base: target === "web" ? "./" : "/",
 
-  plugins: [react()],
+  plugins: [
+    react(),
+    ...(target === "web"
+      ? [
+          {
+            name: "web-content-security-policy",
+            apply: "build" as const,
+            transformIndexHtml: () => [
+              {
+                tag: "meta",
+                attrs: {
+                  "http-equiv": "Content-Security-Policy",
+                  content:
+                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'",
+                },
+                injectTo: "head-prepend" as const,
+              },
+            ],
+          },
+        ]
+      : []),
+  ],
 
   resolve: {
     alias: {
       "@platform-impl": fileURLToPath(
-        new URL(`./src/platform/${target}.ts`, import.meta.url)
+        new URL(`./src/platform/${target}.ts`, import.meta.url),
       ),
     },
   },
-
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

@@ -1,153 +1,128 @@
 name: Checks
 
-# The font tables under BlinkenBadge/src-tauri/src/font/ are generated from the
-# pixel art in fonts/, and each face's Cyrillic and accented Latin are derived
-# from its own Latin. Both are committed, so a normal build never runs the
-# generators, and nothing otherwise stops the two drifting apart: edit a
-# letterform without rerunning them and the committed table keeps the old
-# shape, or the Cyrillic keeps a weight the Latin no longer has. Neither
-# failure is visible in a diff review.
-#
-# So rerun them here and fail if anything moved.
-#
-# The test suites run here too. They already run in release.yml, but that only
-# fires on a version tag, which means the first CI run of a change is the one
-# that builds the installers. Running them per push is what makes a red mark
-# arrive while the change is still in hand.
-
 on:
   push:
   pull_request:
-  # Runnable on demand. A push event went missing once and there was no way to
-  # ask for the checks again without pushing something, which is a poor reason
-  # to make a commit.
   workflow_dispatch:
+  schedule:
+    - cron: "17 14 * * *"
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   generated-fonts-are-current:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
-
-      - name: Regenerate the faces
+      - name: Verify generated fonts and idempotence
         run: |
-          # derive.py first: it writes the Cyrillic and accented Latin back into
-          # the .face sources, which build.py then turns into Rust. The other
-          # order would compile the previous derivation.
-          python3 fonts/derive.py serif sans cartoon future
-          python3 fonts/build.py
-          # Same sources again for the web client, so the browser and the
-          # desktop app cannot disagree about what a glyph looks like.
-          python3 fonts/webfont.py
-
-      - name: Nothing should have changed
-        run: |
-          if git diff --quiet; then
-            echo "Generated fonts match their sources."
-            exit 0
-          fi
-          echo "::error::Generated font files are out of date. Run:"
-          echo "::error::  python3 fonts/derive.py serif sans cartoon future && python3 fonts/build.py && python3 fonts/webfont.py"
-          echo
-          # Names first, since a regenerated glyph table is thousands of lines
-          # of hex and the useful signal is which faces moved.
-          git diff --stat
-          echo
-          git diff -- fonts/
-          exit 1
-
-      - name: The generators must be idempotent
-        run: |
-          # derive.py reads the .face files it also writes to. If a second run
-          # differs from the first, it is seeing its own output as hand-drawn
-          # work, and the check above would pass or fail depending on how many
-          # times it happened to be run.
-          python3 fonts/derive.py serif sans cartoon future
-          python3 fonts/build.py
-          if ! git diff --quiet; then
-            echo "::error::Running the generators twice does not match running them once."
-            git diff --stat
-            exit 1
-          fi
-          echo "Second run is a no-op."
+          for pass in 1 2; do
+            python3 fonts/derive.py serif sans cartoon future
+            python3 fonts/build.py
+            python3 fonts/webfont.py
+            git diff --exit-code
+          done
 
   rust:
-    # Pinned, and pinned to the same release the Linux installers are built on.
-    # `ubuntu-latest` moved from image 20260720 to 20260810 and the apt install
-    # below began hanging with no output; a check that tests on a different
-    # distribution from the one we ship was the wrong shape anyway.
     runs-on: ubuntu-22.04
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: BlinkenBadge/src-tauri
-
-      # webkit2gtk 4.1 is the Tauri v2 webview, and libudev is what hidapi's
-      # hidraw backend needs. `cargo test` links the whole library, so the
-      # build dependencies are required even though no window is opened.
-      #
-      # Installed the plain way on purpose. These are 41 of this job's 81
-      # seconds and caching them looks like the obvious win, but the usual
-      # action for it restores the package files without leaving a working
-      # development environment behind: the build then fails at link time
-      # looking for -ludev and -lwebkit2gtk-4.1. Tried, reverted. Forty
-      # seconds is not worth a build that cannot link.
       - name: Install Linux build dependencies
         env:
-          # Without this a package that wants to ask something waits forever,
-          # which is how this step came to hang for twenty minutes printing
-          # nothing at all.
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev \
-            librsvg2-dev libudev-dev
-
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libudev-dev
       - name: Test
         working-directory: BlinkenBadge/src-tauri
-        run: cargo test
-
+        run: cargo test --locked
+      - name: Format handwritten Rust
+        working-directory: BlinkenBadge/src-tauri
+        run: rustfmt --check --edition 2021 --config skip_children=true build.rs src/*.rs
+      - name: Clippy
+        working-directory: BlinkenBadge/src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
 
   web:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          node-version: 20
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
           cache: npm
           cache-dependency-path: BlinkenBadge/package-lock.json
-
       - name: Install dependencies
         working-directory: BlinkenBadge
         run: npm ci
-
       - name: Typecheck
         working-directory: BlinkenBadge
         run: npx tsc --noEmit
-
       - name: Test
         working-directory: BlinkenBadge
         run: npm test
-
-      # Both targets, because they are different bundles: the alias in
-      # vite.config.ts swaps the platform implementation, so a change that
-      # compiles for the desktop can still break the browser build.
-      - name: Build (desktop)
+      - name: Build desktop frontend
         working-directory: BlinkenBadge
-        run: npx vite build
-
-      - name: Build (web)
+        run: npm run build
+      - name: Build web frontend
         working-directory: BlinkenBadge
         run: npm run build:web
+
+  dependency-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      - name: Audit npm lockfile
+        working-directory: BlinkenBadge
+        run: npm audit --audit-level=low
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: BlinkenBadge/src-tauri
+          shared-key: dependency-audit
+      - name: Install advisory scanner
+        run: cargo install --locked cargo-deny --version 0.20.2
+      - name: Check advisory exception deadline
+        run: python3 scripts/check-advisory-exceptions.py
+      - name: Audit Cargo lockfile
+        working-directory: BlinkenBadge/src-tauri
+        run: cargo deny --locked check advisories
+
+  checks:
+    if: always()
+    needs: [generated-fonts-are-current, rust, web, dependency-audit]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every check
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")'
