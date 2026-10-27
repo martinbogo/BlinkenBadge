@@ -41,25 +41,31 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let recent = files_recent_submenu(app)?;
 
     let file = SubmenuBuilder::new(app, "File")
-        .item(&MenuItemBuilder::with_id("new-project", "New Project")
-            .accelerator("CmdOrCtrl+N")
-            .build(app)?)
-        .item(&MenuItemBuilder::with_id("open-project", "Open Project...")
-            .accelerator("CmdOrCtrl+O")
-            .build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("new-project", "New Project")
+                .accelerator("CmdOrCtrl+N")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("open-project", "Open Project...")
+                .accelerator("CmdOrCtrl+O")
+                .build(app)?,
+        )
         .item(&recent)
         .separator()
-        .item(&MenuItemBuilder::with_id("save-project", "Save")
-            .accelerator("CmdOrCtrl+S")
-            .build(app)?)
-        .item(&MenuItemBuilder::with_id("save-project-as", "Save As...")
-            .accelerator("CmdOrCtrl+Shift+S")
-            .build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("save-project", "Save")
+                .accelerator("CmdOrCtrl+S")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("save-project-as", "Save As...")
+                .accelerator("CmdOrCtrl+Shift+S")
+                .build(app)?,
+        )
         .separator()
-        .item(&MenuItemBuilder::with_id("import-message", "Import Message...")
-            .build(app)?)
-        .item(&MenuItemBuilder::with_id("export-message", "Export Message...")
-            .build(app)?)
+        .item(&MenuItemBuilder::with_id("import-message", "Import Message...").build(app)?)
+        .item(&MenuItemBuilder::with_id("export-message", "Export Message...").build(app)?)
         .separator()
         .item(&quit_item(app)?)
         .build()?;
@@ -134,7 +140,13 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     app.set_menu(menu)?;
     let handle = app.clone();
     app.on_menu_event(move |_app, event| {
-        let _ = handle.emit(MENU_EVENT, event.id().0.clone());
+        let id = event.id().0.clone();
+        if let Some(path) = id.strip_prefix(RECENT_PREFIX) {
+            if crate::files::grant_native(&handle, path).is_err() {
+                return;
+            }
+        }
+        let _ = handle.emit(MENU_EVENT, id);
     });
     Ok(())
 }

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { imageLayout, MAX_IMAGE_BYTES } from "./limits";
 import { BADGE_HEIGHT, BADGE_WIDTH, type Frame } from "./types";
 
 export interface ImportOptions {
@@ -47,16 +48,20 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
  */
 export async function importImage(
   dataUrl: string,
-  opts: ImportOptions
+  opts: ImportOptions,
 ): Promise<ImportResult> {
+  if (!/^data:image\/(png|gif|bmp|jpeg|webp);base64,/i.test(dataUrl)) {
+    throw new Error("Select a PNG, GIF, BMP, JPEG, or WebP image.");
+  }
+  if (dataUrl.length > Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 128)
+    throw new Error("Image exceeds the 16 MiB limit.");
   const img = await loadImage(dataUrl);
   if (!img.width || !img.height) {
     throw new Error("That image has no pixels.");
   }
 
   const scaledFrom = img.height === BADGE_HEIGHT ? undefined : img.height;
-  const scale = BADGE_HEIGHT / img.height;
-  const width = Math.max(1, Math.round(img.width * scale));
+  const { width, count } = imageLayout(img.width, img.height, opts.asFrames);
 
   const cv = document.createElement("canvas");
   cv.width = width;
@@ -79,12 +84,11 @@ export async function importImage(
 
   if (!opts.asFrames) {
     const frame: Frame = Array.from({ length: BADGE_HEIGHT }, (_, y) =>
-      Array.from({ length: width }, (_, x) => lit(x, y))
+      Array.from({ length: width }, (_, x) => lit(x, y)),
     );
     return { frames: [frame], width, scaledFrom };
   }
 
-  const count = Math.max(1, Math.ceil(width / BADGE_WIDTH));
   const frames: Frame[] = [];
   for (let f = 0; f < count; f++) {
     frames.push(
@@ -92,8 +96,8 @@ export async function importImage(
         Array.from({ length: BADGE_WIDTH }, (_, x) => {
           const sx = f * BADGE_WIDTH + x;
           return sx < width ? lit(sx, y) : false;
-        })
-      )
+        }),
+      ),
     );
   }
   return { frames, width: BADGE_WIDTH, scaledFrom };

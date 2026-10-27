@@ -165,7 +165,7 @@ Unsaved changes are autosaved to an application cache 2 seconds after each edit 
 
 ## Building
 
-Prerequisites: Rust (stable) and Node.js 20.19+.
+Prerequisites: Rust (stable) and Node.js 24+.
 
 ### Platform Dependencies
 
@@ -208,7 +208,9 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
 
 ### Creating a Release
 
-Tagging a commit with `v*` triggers the release workflow in GitHub Actions. The git tag must match the version string in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`.
+Merge release changes through a pull request with passing checks. The `v*` tag must reference a commit on `main` and match all manifests and lockfiles. Version tags cannot be changed or deleted.
+
+The release workflow runs the full check suite before building installers. Official macOS builds and Windows signing require approval in the `release` environment. Missing macOS credentials, failed signature verification, or failed notarization stop the release. Each draft release includes `SHA256SUMS`.
 
 1. Create a git tag:
    ```bash
@@ -223,7 +225,7 @@ To generate artifacts without publishing a release, trigger the **Release** work
 
 ### macOS Code Signing
 
-macOS builds are signed and notarized when these GitHub Actions secrets are defined:
+Official macOS builds require these GitHub Actions secrets:
 
 | Secret | Description |
 |---|---|
@@ -263,3 +265,28 @@ The Azure application `lilykvm-ci-signing` holds the Certificate Profile Signer 
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+## Security and Quality Checks
+
+1. Run frontend tests and dependency checks:
+   ```bash
+   cd BlinkenBadge
+   npm ci
+   npm test
+   npm audit --audit-level=low
+   ```
+2. Run backend checks:
+   ```bash
+   cd src-tauri
+   cargo test --locked
+   cargo clippy --locked --all-targets -- -D warnings
+   cargo deny --locked check advisories
+   ```
+
+CI runs these checks on pushes, pull requests, releases, and a daily schedule. CodeQL scans JavaScript and TypeScript. Dependabot checks npm, Cargo, and Actions updates weekly.
+
+The GTK `proc-macro-error` maintenance advisory has one documented exception in `BlinkenBadge/src-tauri/deny.toml`. CI requires review before January 27, 2027. Vulnerability and unsoundness advisories remain enforced.
+
+Desktop file commands accept only document paths authorized by native pickers, file-open events, recents, or recovery. Document and image imports are limited to 8 MiB and 16 MiB respectively. Saves use atomic replacement.
+
+See [SECURITY.md](SECURITY.md) for private vulnerability reporting.

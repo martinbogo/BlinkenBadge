@@ -134,7 +134,10 @@ mod tests {
             identify([Some("FOSSASIA WAS HERE"), None, None]),
             Firmware::BadgeMagic
         );
-        assert_eq!(identify([None, None, Some("BM1144-C")]), Firmware::BadgeMagic);
+        assert_eq!(
+            identify([None, None, Some("BM1144-C")]),
+            Firmware::BadgeMagic
+        );
     }
 
     #[test]

@@ -20,7 +20,8 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420 ws://localhost:1421; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'"
     }
   },
   "bundle": {
@@ -28,14 +29,18 @@
     "targets": "all",
     "fileAssociations": [
       {
-        "ext": ["badge"],
+        "ext": [
+          "badge"
+        ],
         "name": "BlinkenBadgeProject",
         "description": "BlinkenBadge project",
         "role": "Editor",
         "mimeType": "application/x-blinkenbadge-project"
       },
       {
-        "ext": ["badgemsg"],
+        "ext": [
+          "badgemsg"
+        ],
         "name": "BlinkenBadgeMessage",
         "description": "BlinkenBadge message",
         "role": "Editor",

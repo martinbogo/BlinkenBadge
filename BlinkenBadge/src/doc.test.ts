@@ -182,3 +182,33 @@ describe("mixed and damaged files", () => {
     expect(() => parseProject(JSON.stringify(doc))).toThrow(/rows of pixels/);
   });
 });
+
+describe("untrusted document limits", () => {
+  it("rejects duplicate IDs rather than editing several messages together", () => {
+    const m = patterned();
+    expect(() => parseProject(serializeProject(project([m, m])))).toThrow(/duplicate/);
+  });
+  it("rejects excessively wide rows before decoding them", () => {
+    const raw = JSON.parse(serializeProject(project([patterned(4)])));
+    raw.messages[0].frames[0] = Array(11).fill(".".repeat(5905));
+    expect(() => parseProject(JSON.stringify(raw))).toThrow(/columns/);
+  });
+  it("bounds frame counts in every mode", () => {
+    const raw = JSON.parse(serializeProject(project([patterned(4)])));
+    raw.messages[0].frames = Array(9).fill(raw.messages[0].frames[0]);
+    expect(() => parseProject(JSON.stringify(raw))).toThrow(/frames/);
+  });
+  it("rejects null messages and invalid format versions", () => {
+    expect(() => parseMessage("null")).toThrow(DocError);
+    for (const version of [0, -1, 1.5]) {
+      const raw = JSON.parse(serializeProject(project([patterned()])));
+      raw.version = version;
+      expect(() => parseProject(JSON.stringify(raw))).toThrow(DocError);
+    }
+  });
+  it("repairs fractional speeds to a supported value", () => {
+    const raw = JSON.parse(serializeProject(project([patterned()])));
+    raw.messages[0].speed = 1.5;
+    expect(parseProject(JSON.stringify(raw)).messages[0].speed).toBe(4);
+  });
+});

@@ -1,0 +1,253 @@
+// @vitest-environment jsdom
+import { StrictMode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { Platform, Recovery } from "./platform/types";
+import { newMessage } from "./badge";
+import { serializeProject } from "./doc";
+
+const host = vi.hoisted(() => ({
+  kind: "web",
+  fontMetrics: vi.fn(async () => []),
+  renderText: vi.fn(),
+  usbFind: vi.fn(async () => null),
+  onUsbPresence: vi.fn(() => () => {}),
+  onSendProgress: vi.fn(() => () => {}),
+  takePendingFiles: vi.fn(async (): Promise<string[]> => []),
+  recoveryRead: vi.fn(async (): Promise<Recovery | null> => null),
+  recoveryWrite: vi.fn(async () => {}),
+  recoveryClear: vi.fn(async () => {}),
+  onMenu: vi.fn(() => () => {}),
+  onOpenFile: vi.fn(() => () => {}),
+  onExitRequested: vi.fn(() => () => {}),
+  setTitle: vi.fn(),
+  confirmExit: vi.fn(async () => {}),
+  pickOpen: vi.fn(),
+  pickSave: vi.fn(),
+  writeText: vi.fn(async () => {}),
+  readText: vi.fn(),
+}));
+vi.mock("./platform", () => ({ platform: host as unknown as Platform }));
+import App from "./App";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  const storage = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storage.set(key, value);
+    },
+    clear: () => storage.clear(),
+  });
+  host.takePendingFiles.mockResolvedValue([]);
+  host.recoveryRead.mockResolvedValue(null);
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+});
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+const renderApp = () =>
+  render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+
+describe("editor regressions", () => {
+  it("keeps the editor visible when undo removes the active message", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(screen.getByRole("button", { name: "Add message" }));
+    await user.click(screen.getByRole("button", { name: "Add message" }));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByRole("textbox", { name: "Message Name" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: /Messages.*2\/8/i }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByRole("textbox", { name: "Message Name" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: /Messages.*1\/8/i }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Redo" }));
+    expect(
+      screen.getByRole("heading", { name: /Messages.*2\/8/i }),
+    ).toBeTruthy();
+  });
+  it("blocks undo behind a modal, traps focus, and restores focus on cancel", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    fireEvent.change(screen.getByRole("textbox", { name: "Message Name" }), {
+      target: { value: "Edited" },
+    });
+    const trigger = screen.getByRole("button", { name: "New" });
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog");
+    const save = within(dialog).getByRole("button", { name: "Save" });
+    expect(document.activeElement).toBe(save);
+    fireEvent.keyDown(save, { key: "z", metaKey: true });
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Message Name",
+          hidden: true,
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Edited");
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    );
+    await user.tab();
+    expect(document.activeElement).toBe(save);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+  it("opens pending files once across StrictMode effect replay", async () => {
+    const m = { ...newMessage(), name: "From Disk" };
+    host.takePendingFiles.mockResolvedValue(["selected.badge"]);
+    host.readText.mockResolvedValue(
+      serializeProject({ brightness: 100, messages: [m] }),
+    );
+    renderApp();
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Message Name",
+          }) as HTMLInputElement
+        ).value,
+      ).toBe("From Disk"),
+    );
+    expect(host.takePendingFiles).toHaveBeenCalledOnce();
+    expect(host.readText).toHaveBeenCalledOnce();
+  });
+  it("keeps the modal blocking edits until an asynchronous save finishes", async () => {
+    const user = userEvent.setup();
+    let finish!: () => void;
+    host.pickSave.mockResolvedValue("saved.badge");
+    host.writeText.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderApp();
+    fireEvent.change(screen.getByRole("textbox", { name: "Message Name" }), {
+      target: { value: "Unsaved" },
+    });
+    await user.click(screen.getByRole("button", { name: "New" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(dialog.getAttribute("aria-busy")).toBe("true");
+    expect(
+      (
+        within(dialog).getByRole("button", {
+          name: "Discard",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Message Name",
+          hidden: true,
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Unsaved");
+    finish();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Message Name",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Untitled");
+  });
+
+  it("keeps the existing recovery copy after restoring an untitled web draft", async () => {
+    const user = userEvent.setup();
+    const m = { ...newMessage(), name: "Recovered" };
+    host.recoveryRead.mockResolvedValue({
+      json: serializeProject({ brightness: 100, messages: [m] }),
+      path: "old.badge\u00001",
+      saved_at: new Date().toISOString(),
+    });
+    renderApp();
+    await user.click(await screen.findByRole("button", { name: "Restore" }));
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Message Name",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Recovered");
+    expect(host.recoveryClear).not.toHaveBeenCalled();
+  });
+
+  it("does not attach an old file path to a new document after a slow save", async () => {
+    const user = userEvent.setup();
+    let finish!: () => void;
+    host.pickSave.mockResolvedValue("old.badge");
+    host.writeText.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderApp();
+    fireEvent.change(screen.getByRole("textbox", { name: "Message Name" }), {
+      target: { value: "Old Document" },
+    });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(finish).toBeTypeOf("function"));
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Discard",
+      }),
+    );
+    await act(async () => {
+      finish();
+    });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Message Name",
+          }) as HTMLInputElement
+        ).value,
+      ).toBe("Untitled"),
+    );
+    expect(
+      screen.getByRole("button", { name: "Save" }).getAttribute("title"),
+    ).toContain("Save this project to a file");
+  });
+
+  it("ignores a corrupt LED preference instead of crashing", () => {
+    localStorage.setItem("badge-led", "unknown-color");
+    renderApp();
+    expect(screen.getByRole("textbox", { name: "Message Name" })).toBeTruthy();
+  });
+});

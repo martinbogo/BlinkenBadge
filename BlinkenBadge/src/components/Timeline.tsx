@@ -92,9 +92,25 @@ export default function Timeline({
         <button
           onClick={() => onDuplicate(current)}
           disabled={full}
-          title={full ? `A slot holds ${maxFrames} frames` : "Duplicate this frame"}
+          title={
+            full ? `A slot holds ${maxFrames} frames` : "Duplicate this frame"
+          }
         >
           Duplicate
+        </button>
+        <button
+          onClick={() => onMove(current, current - 1)}
+          disabled={current === 0}
+          aria-label="Move Frame Left"
+        >
+          Move Left
+        </button>
+        <button
+          onClick={() => onMove(current, current + 1)}
+          disabled={current === frames.length - 1}
+          aria-label="Move Frame Right"
+        >
+          Move Right
         </button>
         <button
           onClick={() => onDelete(current)}
@@ -107,7 +123,10 @@ export default function Timeline({
 
       <div className="timeline-strip">
         {frames.map((f, i) => (
-          <div
+          <button
+            type="button"
+            aria-label={`Frame ${i + 1}`}
+            aria-pressed={i === current}
             key={i}
             className={`frame-chip${i === current ? " active" : ""}`}
             onClick={() => onSelect(i)}
@@ -120,17 +139,43 @@ export default function Timeline({
               }
               dragFrom.current = null;
             }}
-            title={`Frame ${i + 1}, drag to reorder`}
+            onDragEnd={() => {
+              dragFrom.current = null;
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              e.preventDefault();
+              e.stopPropagation();
+              const next = Math.max(
+                0,
+                Math.min(
+                  frames.length - 1,
+                  i + (e.key === "ArrowLeft" ? -1 : 1),
+                ),
+              );
+              if (e.altKey && next !== i) onMove(i, next);
+              else onSelect(next);
+              const strip = e.currentTarget.parentElement;
+              requestAnimationFrame(() =>
+                strip
+                  ?.querySelectorAll<HTMLButtonElement>(".frame-chip")
+                  [next]?.focus(),
+              );
+            }}
+            title={`Frame ${i + 1}; Alt+Arrow to reorder`}
           >
             <Thumb frame={f} led={led} />
             <span className="frame-num">{i + 1}</span>
-          </div>
+          </button>
         ))}
         <button
           className="frame-add"
+          aria-label="Add Frame"
           onClick={onAdd}
           disabled={full}
-          title={full ? `A slot holds ${maxFrames} frames` : "Add a blank frame"}
+          title={
+            full ? `A slot holds ${maxFrames} frames` : "Add a blank frame"
+          }
         >
           +
         </button>

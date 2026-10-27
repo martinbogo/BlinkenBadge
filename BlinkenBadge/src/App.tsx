@@ -14,6 +14,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { platform } from "./platform";
+import { useProjectHistory } from "./hooks/useProjectHistory";
+import { useRecovery } from "./hooks/useRecovery";
+import { MAX_BITMAP_WIDTH } from "./limits";
 import PixelCanvas from "./components/PixelCanvas";
 import { ToolOptions, ToolPalette } from "./components/ToolPalette";
 import Timeline from "./components/Timeline";
@@ -30,7 +33,13 @@ import {
   sequenceSlots,
   stepDelay,
 } from "./badge";
-import { faceList, fitText, loadFontMetrics, measureText, pictographs } from "./font";
+import {
+  faceList,
+  fitText,
+  loadFontMetrics,
+  measureText,
+  pictographs,
+} from "./font";
 import { importImage } from "./importImage";
 import {
   DocError,
@@ -43,12 +52,7 @@ import {
   serializeMessage,
   serializeProject,
 } from "./doc";
-import {
-  clearRect,
-  extractRect,
-  pasteBlock,
-  type Rect,
-} from "./draw";
+import { clearRect, extractRect, pasteBlock, type Rect } from "./draw";
 import {
   byteColumns,
   blankFrame,
@@ -86,9 +90,6 @@ import { WebMenuBar } from "./components/WebMenuBar";
 import "./App.css";
 
 const MAX_FRAMES = ANIMATION_MAX_FRAMES;
-const HISTORY_LIMIT = 100;
-/** How long after the last edit the working copy is written for crash recovery. */
-const AUTOSAVE_MS = 2000;
 
 /** A pending modal. `recover` is asked at startup, the rest guard losing work. */
 type Ask =
@@ -99,19 +100,33 @@ type Ask =
 export default function App() {
   const blank = useMemo<Project>(
     () => ({ messages: [newMessage("scroll_left")], brightness: 100 }),
-    []
+    [],
   );
-  const [project, setProject] = useState<Project>(blank);
+  const { project, apply, resetHistory, undo, redo, canUndo, canRedo } =
+    useProjectHistory(blank);
   // Which badge you physically own, not a property of the document. Loading
   // someone else's project must not change the color of your hardware.
-  const isCapture = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("capture");
+  const isCapture =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("capture");
 
-  const [led, setLed] = useState<LedColor>(
-    () => (localStorage.getItem("badge-led") as LedColor) || "red"
-  );
+  const [led, setLed] = useState<LedColor>(() => {
+    try {
+      const color = localStorage.getItem("badge-led");
+      return LED_ORDER.includes(color as LedColor)
+        ? (color as LedColor)
+        : "red";
+    } catch {
+      return "red";
+    }
+  });
 
   useEffect(() => {
-    localStorage.setItem("badge-led", led);
+    try {
+      localStorage.setItem("badge-led", led);
+    } catch {
+      /* Storage is optional. */
+    }
   }, [led]);
 
   useEffect(() => {
@@ -119,10 +134,12 @@ export default function App() {
       () => setMetricsReady(true),
       // Not worth blocking the editor over: measuring falls back to 8px per
       // character, which is right for the face selected at startup.
-      () => undefined
+      () => undefined,
     );
   }, []);
-  const [activeId, setActiveId] = useState<string>(() => project.messages[0].id);
+  const [requestedId, setActiveId] = useState<string>(
+    () => project.messages[0].id,
+  );
   const [frameIndex, setFrameIndex] = useState(0);
   // Parked on the first frame at startup. An animation looping the moment the
   // app opens is motion nobody asked for; press play to preview it.
@@ -139,7 +156,10 @@ export default function App() {
   // remeasured with the real widths rather than the 8px assumption.
   const [metricsReady, setMetricsReady] = useState(false);
   const faces = useMemo(() => (metricsReady ? faceList() : []), [metricsReady]);
-  const emoji = useMemo(() => (metricsReady ? pictographs() : []), [metricsReady]);
+  const emoji = useMemo(
+    () => (metricsReady ? pictographs() : []),
+    [metricsReady],
+  );
   // The palette is off until asked for. It is a wall of sprites, and most
   // stamps are text.
   const [showEmoji, setShowEmoji] = useState(false);
@@ -161,56 +181,31 @@ export default function App() {
   // Dirtiness is a comparison rather than a flag, so undoing back to the saved
   // state correctly stops claiming there is anything to lose.
   const [docPath, setDocPath] = useState<string | null>(null);
-  const [savedJson, setSavedJson] = useState<string>(() => serializeProject(blank));
+  const [savedJson, setSavedJson] = useState<string>(() =>
+    serializeProject(blank),
+  );
   /** A question that has to be answered before anything else happens. */
   const [ask, setAsk] = useState<Ask | null>(null);
+  const documentEpoch = useRef(0);
+  const saveSequence = useRef(0);
+  const documentWrites = useRef(Promise.resolve());
 
-  const past = useRef<Project[]>([]);
-  const future = useRef<Project[]>([]);
-
-  const active = useMemo(
-    () => project.messages.find((m) => m.id === activeId) ?? null,
-    [project.messages, activeId]
+  const active =
+    project.messages.find((m) => m.id === requestedId) ??
+    project.messages[0] ??
+    null;
+  const activeId = active?.id ?? "";
+  const commit = useCallback((next: Project) => apply(next, true), [apply]);
+  const [startupReady, setStartupReady] = useState(false);
+  const currentJson = useMemo(() => serializeProject(project), [project]);
+  const dirty = currentJson !== savedJson;
+  const { clearRecovery, savedRecovery } = useRecovery(
+    currentJson,
+    dirty,
+    docPath,
+    startupReady && ask?.kind !== "recover",
+    setTextWarning,
   );
-
-  // `history: false` folds the change into the previous undo entry. Painting a
-  // stroke fires one change per pixel, and an undo stack at that granularity
-  // is unusable, so only the first change of a stroke records history.
-  const apply = useCallback((next: Project, history: boolean) => {
-    setProject((prev) => {
-      if (history) {
-        past.current = [...past.current.slice(-HISTORY_LIMIT), prev];
-        future.current = [];
-      }
-      return next;
-    });
-  }, []);
-
-  const commit = useCallback(
-    (next: Project) => apply(next, true),
-    [apply]
-  );
-
-  const undo = useCallback(() => {
-    setProject((prev) => {
-      const p = past.current.pop();
-      if (!p) return prev;
-      future.current = [prev, ...future.current];
-      return p;
-    });
-  }, []);
-
-  const redo = useCallback(() => {
-    setProject((prev) => {
-      const [f, ...rest] = future.current;
-      if (!f) return prev;
-      future.current = rest;
-      past.current = [...past.current, prev];
-      return f;
-    });
-  }, []);
-
-
 
   useEffect(() => {
     setSelection(null);
@@ -230,13 +225,13 @@ export default function App() {
         {
           ...project,
           messages: project.messages.map((m) =>
-            m.id === active.id ? fn(m) : m
+            m.id === active.id ? fn(m) : m,
           ),
         },
-        history
+        history,
       );
     },
-    [active, project, apply]
+    [active, project, apply],
   );
 
   const updateFrame = useCallback(
@@ -246,10 +241,10 @@ export default function App() {
           ...m,
           frames: m.frames.map((f, i) => (i === frameIndex ? fn(f) : f)),
         }),
-        history
+        history,
       );
     },
-    [updateActive, frameIndex]
+    [updateActive, frameIndex],
   );
 
   const setMode = useCallback(
@@ -277,19 +272,20 @@ export default function App() {
       });
       setFrameIndex(0);
     },
-    [updateActive]
+    [updateActive],
   );
 
   const setWidth = useCallback(
     (width: number) => {
-      const w = Math.max(8, Math.min(2000, width));
+      if (!Number.isFinite(width)) return;
+      const w = Math.max(8, Math.min(MAX_BITMAP_WIDTH, Math.round(width)));
       updateActive((m) => ({
         ...m,
         width: w,
         frames: m.frames.map((f) => resizeFrame(f, w)),
       }));
     },
-    [updateActive]
+    [updateActive],
   );
 
   const insertText = useCallback(async () => {
@@ -299,7 +295,7 @@ export default function App() {
       setTextWarning(
         bmp.missing.length
           ? `No glyph for ${bmp.missing.join(" ")}, replaced with "?"`
-          : null
+          : null,
       );
       const grow = active.mode !== "animation";
       updateActive((m) => {
@@ -370,7 +366,13 @@ export default function App() {
       if (!selection || !active) return;
       const block = extractRect(active.frames[frameIndex], selection);
       updateFrame((f) =>
-        pasteBlock(clearRect(f, selection), block, selection.x0 + dx, selection.y0 + dy, true)
+        pasteBlock(
+          clearRect(f, selection),
+          block,
+          selection.x0 + dx,
+          selection.y0 + dy,
+          true,
+        ),
       );
       setSelection({
         x0: selection.x0 + dx,
@@ -379,7 +381,7 @@ export default function App() {
         y1: selection.y1 + dy,
       });
     },
-    [selection, active, frameIndex, updateFrame]
+    [selection, active, frameIndex, updateFrame],
   );
 
   /** Copy the previous frame's art into this one, the usual animation workflow. */
@@ -391,16 +393,19 @@ export default function App() {
 
   // Built from the enabled slots only, so the whole-sequence preview matches
   // what the badge is going to play rather than what the list happens to show.
-  const live = useMemo(() => enabledMessages(project.messages), [project.messages]);
+  const live = useMemo(
+    () => enabledMessages(project.messages),
+    [project.messages],
+  );
   const slots = useMemo(() => sequenceSlots(live), [live]);
 
   // In sequence scope the step counts across every slot, so the message being
   // shown is whichever the playhead is inside, not the one being edited.
   const here = useMemo(
     () => (scope === "sequence" ? sequenceAt(slots, step) : null),
-    [scope, slots, step]
+    [scope, slots, step],
   );
-  const shown = here ? live[here.slot.index] ?? active : active;
+  const shown = here ? (live[here.slot.index] ?? active) : active;
   const shownStep = here ? here.local : step;
 
   const period = useMemo(
@@ -410,7 +415,7 @@ export default function App() {
         : active
           ? previewPeriod(active)
           : 1,
-    [scope, slots, active]
+    [scope, slots, active],
   );
 
   // Scrubbing takes the preview off the clock: dragging the bar or stepping a
@@ -420,7 +425,7 @@ export default function App() {
       setPlaying(false);
       setStep(Math.max(0, Math.min(period - 1, v)));
     },
-    [period]
+    [period],
   );
 
   /** Jog by whole steps, wrapping, so you can go either way round the loop. */
@@ -429,7 +434,7 @@ export default function App() {
       setPlaying(false);
       setStep((s) => (((s + d) % period) + period) % period);
     },
-    [period]
+    [period],
   );
 
   useEffect(() => {
@@ -438,7 +443,13 @@ export default function App() {
       const inField =
         e.target instanceof HTMLElement &&
         ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName);
-      if (inField) return;
+      if (ask || inField) return;
+      if (
+        !mod &&
+        e.target instanceof HTMLElement &&
+        e.target.closest('button, [role="tab"], [contenteditable=true]')
+      )
+        return;
 
       if (mod) {
         switch (e.key.toLowerCase()) {
@@ -509,6 +520,7 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [
+    ask,
     undo,
     redo,
     selection,
@@ -526,9 +538,8 @@ export default function App() {
   /** Replace the whole document and treat the result as freshly opened. */
   const adopt = useCallback(
     (next: Project, path: string | null) => {
-      past.current = [];
-      future.current = [];
-      setProject(next);
+      documentEpoch.current++;
+      resetHistory(next);
       setActiveId(next.messages[0].id);
       setFrameIndex(0);
       setStep(0);
@@ -537,21 +548,33 @@ export default function App() {
       setSavedJson(serializeProject(next));
       setTextWarning(null);
     },
-    []
+    [resetHistory],
   );
 
   /** Write to a known path. Returns false if the write failed. */
   const writeTo = useCallback(
     async (path: string, p: Project) => {
       const json = serializeProject(p);
+      const epoch = documentEpoch.current;
+      const sequence = ++saveSequence.current;
+      const write = documentWrites.current.then(() =>
+        platform.writeText(path, json, "project"),
+      );
+      documentWrites.current = write.catch(() => {});
       try {
-        await platform.writeText(path, json, "project");
+        await write;
+        // A slow save must not adopt its path into a newer document.
+        if (
+          epoch !== documentEpoch.current ||
+          sequence !== saveSequence.current
+        )
+          return false;
         setDocPath(path);
         setSavedJson(json);
         // The autosave exists to survive a crash. Once the work is on disk for
         // real there is nothing left to recover, and a stale one would prompt
         // on next launch for no reason.
-        await platform.recoveryClear().catch(() => {});
+        await savedRecovery(json);
         setTextWarning(`Saved to ${path}`);
         return true;
       } catch (e) {
@@ -559,14 +582,15 @@ export default function App() {
         return false;
       }
     },
-    []
+    [savedRecovery],
   );
 
   const saveProjectAs = useCallback(async () => {
     const suggested = `${safeFileName(baseName(docPath) ?? "Untitled", "Untitled")}.${PROJECT_EXT}`;
+    const epoch = documentEpoch.current;
     try {
       const path = await platform.pickSave("project", suggested);
-      if (!path) return false;
+      if (!path || epoch !== documentEpoch.current) return false;
       return await writeTo(path, project);
     } catch (e) {
       setTextWarning(String(e));
@@ -586,10 +610,14 @@ export default function App() {
         const text = await platform.readText(path, "project");
         adopt(parseProject(text), path);
       } catch (e) {
-        setTextWarning(e instanceof DocError ? e.message : `Could not open that project: ${e}`);
+        setTextWarning(
+          e instanceof DocError
+            ? e.message
+            : `Could not open that project: ${e}`,
+        );
       }
     },
-    [adopt]
+    [adopt],
   );
 
   const openProject = useCallback(async () => {
@@ -598,7 +626,9 @@ export default function App() {
       if (!picked) return;
       adopt(parseProject(picked.text), picked.path);
     } catch (e) {
-      setTextWarning(e instanceof DocError ? e.message : `Could not open that project: ${e}`);
+      setTextWarning(
+        e instanceof DocError ? e.message : `Could not open that project: ${e}`,
+      );
     }
   }, [adopt]);
 
@@ -627,21 +657,23 @@ export default function App() {
         const m = parseMessage(text);
         if (project.messages.length >= MAX_MESSAGES) {
           throw new DocError(
-            `This project already holds ${MAX_MESSAGES} messages. Delete one first.`
+            `This project already holds ${MAX_MESSAGES} messages. Delete one first.`,
           );
         }
         // A fresh id, or importing the same file twice would produce two
         // messages the selection logic cannot tell apart.
-        const copy: Message = { ...m, id: `m${Date.now()}` };
+        const copy: Message = { ...m, id: newMessage().id };
         commit({ ...project, messages: [...project.messages, copy] });
         setActiveId(copy.id);
         setFrameIndex(0);
         setTextWarning(`Imported ${copy.name} from ${source}`);
       } catch (e) {
-        setTextWarning(e instanceof DocError ? e.message : `Could not import that: ${e}`);
+        setTextWarning(
+          e instanceof DocError ? e.message : `Could not import that: ${e}`,
+        );
       }
     },
-    [project, commit]
+    [project, commit],
   );
 
   const importMessage = useCallback(async () => {
@@ -672,7 +704,7 @@ export default function App() {
   // that face rather than inferred from the string's length. See font.ts.
   const textPx = useMemo(
     () => measureText(textInput, faceId),
-    [textInput, faceId, metricsReady]
+    [textInput, faceId, metricsReady],
   );
 
   /** Drop a pictograph in at the caret, or at the end if the field is not focused. */
@@ -684,7 +716,7 @@ export default function App() {
       const next = fitText(
         textInput.slice(0, at) + c + textInput.slice(end),
         textBudgetPx,
-        faceId
+        faceId,
       );
       setTextInput(next);
       // Put the caret after what was just inserted rather than at the end,
@@ -696,13 +728,13 @@ export default function App() {
         el?.setSelectionRange(pos, pos);
       });
     },
-    [textInput, textBudgetPx, faceId]
+    [textInput, textBudgetPx, faceId],
   );
 
   const reorder = useCallback(
     (ids: Set<string>, gap: number) =>
       commit({ ...project, messages: moveTo(project.messages, ids, gap) }),
-    [project, commit]
+    [project, commit],
   );
 
   const toggleEnabled = useCallback(
@@ -710,14 +742,11 @@ export default function App() {
       commit({
         ...project,
         messages: project.messages.map((m) =>
-          m.id === id ? { ...m, enabled: m.enabled === false } : m
+          m.id === id ? { ...m, enabled: m.enabled === false } : m,
         ),
       }),
-    [project, commit]
+    [project, commit],
   );
-
-  const currentJson = useMemo(() => serializeProject(project), [project]);
-  const dirty = currentJson !== savedJson;
 
   /** Run `then` once it is safe to throw the current document away. */
   const guard = useCallback(
@@ -728,14 +757,14 @@ export default function App() {
       }
       setAsk({ kind: "unsaved", verb, then });
     },
-    [dirty]
+    [dirty],
   );
 
   /** Shut down for real. Clearing the autosave is what marks the exit clean. */
   const leave = useCallback(async () => {
-    await platform.recoveryClear().catch(() => {});
+    await clearRecovery();
     await platform.confirmExit().catch(() => {});
-  }, []);
+  }, [clearRecovery]);
 
   /** Open a path, choosing project or message by its extension. */
   const openPath = useCallback(
@@ -751,7 +780,7 @@ export default function App() {
       }
       await loadProjectFrom(path);
     },
-    [importMessageFrom, loadProjectFrom]
+    [importMessageFrom, loadProjectFrom],
   );
 
   // The title bar is the only always-visible place to say which file this is
@@ -761,47 +790,31 @@ export default function App() {
     platform.setTitle(`${dirty ? "• " : ""}${name} - BlinkenBadge`);
   }, [docPath, dirty]);
 
-  // Autosave the working copy for crash recovery. Never writes to the user's
-  // own file: an autosave that overwrote the document would turn a crash into
-  // data loss. Debounced, so a drawing stroke does not hit the disk per pixel.
-  useEffect(() => {
-    if (!dirty) return;
-    const t = setTimeout(() => {
-      platform
-        .recoveryWrite(currentJson, docPath, new Date().toISOString())
-        .catch(() => {});
-    }, AUTOSAVE_MS);
-    return () => clearTimeout(t);
-  }, [currentJson, dirty, docPath]);
+  const startup = useRef<Promise<{
+    pending: string[];
+    recovery: Awaited<ReturnType<typeof platform.recoveryRead>>;
+  }> | null>(null);
 
   // Startup: a leftover autosave means the last session did not end cleanly.
   // Files the OS asked us to open win over it, since that was a deliberate act.
   useEffect(() => {
     let alive = true;
-    (async () => {
-      try {
-        const pending = await platform.takePendingFiles();
-        if (pending.length) {
-          if (alive) await openPath(pending[0]);
-          return;
-        }
-      } catch {
-        // fall through to recovery
-      }
-      try {
-        const rec = await platform.recoveryRead();
-        if (rec && alive) {
-          setAsk({
-            kind: "recover",
-            json: rec.json,
-            path: rec.path,
-            savedAt: rec.saved_at,
-          });
-        }
-      } catch {
-        // A broken autosave is not worth an error on startup.
-      }
-    })();
+    startup.current ??= (async () => ({
+      pending: await platform.takePendingFiles().catch(() => []),
+      recovery: await platform.recoveryRead().catch(() => null),
+    }))();
+    void startup.current.then(async ({ pending, recovery }) => {
+      if (!alive) return;
+      if (pending.length) await openPath(pending[0]);
+      else if (recovery)
+        setAsk({
+          kind: "recover",
+          json: recovery.json,
+          path: recovery.path,
+          savedAt: recovery.saved_at,
+        });
+      if (alive) setStartupReady(true);
+    });
     return () => {
       alive = false;
     };
@@ -851,6 +864,7 @@ export default function App() {
   // whether the document is dirty and therefore whether to ask first.
   useEffect(() => {
     return platform.onMenu((id) => {
+      if (ask) return;
       if (id.startsWith("open-recent:")) {
         const path = id.slice("open-recent:".length);
         if (path.toLowerCase().endsWith(`.${MESSAGE_EXT}`)) void openPath(path);
@@ -886,6 +900,7 @@ export default function App() {
       }
     });
   }, [
+    ask,
     guard,
     newProject,
     openProject,
@@ -900,11 +915,17 @@ export default function App() {
 
   // Closing is the last chance to lose work, so it gets the same guard as New
   // and Open. The host holds the exit until we answer, where it can.
-  useEffect(() =>
-    platform.onExitRequested(() => {
-      if (dirty) setAsk({ kind: "quit" });
-      else void leave();
-    }), [dirty, leave]);
+  useEffect(
+    () =>
+      platform.onExitRequested(() => {
+        if (platform.kind === "web") return dirty;
+        if (ask) return dirty;
+        if (dirty) setAsk({ kind: "quit" });
+        else void leave();
+        return dirty;
+      }),
+    [ask, dirty, leave],
+  );
 
   const importImageFile = useCallback(async () => {
     if (!active) return;
@@ -915,7 +936,7 @@ export default function App() {
       const res = await importImage(dataUrl, { threshold, asFrames });
       if (asFrames && res.frames.length > MAX_FRAMES) {
         throw new Error(
-          `That image is ${res.frames.length} frames wide; the badge holds ${MAX_FRAMES}.`
+          `That image is ${res.frames.length} frames wide; the badge holds ${MAX_FRAMES}.`,
         );
       }
       updateActive((m) => ({
@@ -927,7 +948,7 @@ export default function App() {
       setTextWarning(
         res.scaledFrom
           ? `Scaled from ${res.scaledFrom}px tall to 11px. ${res.frames.length} frame(s).`
-          : `Imported ${res.frames.length} frame(s).`
+          : `Imported ${res.frames.length} frame(s).`,
       );
     } catch (e) {
       setTextWarning(String(e));
@@ -949,7 +970,7 @@ export default function App() {
       commit({ ...project, messages: rest });
       if (activeId === id) setActiveId(rest[0].id);
     },
-    [project, commit, activeId]
+    [project, commit, activeId],
   );
 
   useEffect(() => setStep(0), [activeId, active?.mode, scope]);
@@ -958,7 +979,7 @@ export default function App() {
     if (!shown || !playing || period <= 1) return;
     const t = setInterval(
       () => setStep((s) => (s + 1) % period),
-      stepDelay(shown.speed)
+      stepDelay(shown.speed),
     );
     return () => clearInterval(t);
   }, [shown, playing, period]);
@@ -1001,9 +1022,33 @@ export default function App() {
           }}
         >
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#ff5f57", border: "1px solid #e0443e" }} />
-            <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#febc2e", border: "1px solid #d89e24" }} />
-            <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#28c840", border: "1px solid #1aab29" }} />
+            <div
+              style={{
+                width: "12px",
+                height: "12px",
+                borderRadius: "50%",
+                background: "#ff5f57",
+                border: "1px solid #e0443e",
+              }}
+            />
+            <div
+              style={{
+                width: "12px",
+                height: "12px",
+                borderRadius: "50%",
+                background: "#febc2e",
+                border: "1px solid #d89e24",
+              }}
+            />
+            <div
+              style={{
+                width: "12px",
+                height: "12px",
+                borderRadius: "50%",
+                background: "#28c840",
+                border: "1px solid #1aab29",
+              }}
+            />
           </div>
           <div
             style={{
@@ -1057,7 +1102,9 @@ export default function App() {
             New
           </button>
           <button
-            onClick={() => guard("open another project", () => void openProject())}
+            onClick={() =>
+              guard("open another project", () => void openProject())
+            }
             title="Open Project (Cmd/Ctrl+O)"
           >
             Open
@@ -1076,10 +1123,10 @@ export default function App() {
             Save
           </button>
           <span className="sep" />
-          <button onClick={undo} title="Cmd/Ctrl+Z">
+          <button onClick={undo} disabled={!canUndo} title="Cmd/Ctrl+Z">
             Undo
           </button>
-          <button onClick={redo} title="Cmd/Ctrl+Shift+Z">
+          <button onClick={redo} disabled={!canRedo} title="Cmd/Ctrl+Shift+Z">
             Redo
           </button>
         </div>
@@ -1096,7 +1143,9 @@ export default function App() {
           <SlotList
             messages={project.messages}
             activeId={activeId}
-            playing={here ? project.messages.indexOf(live[here.slot.index]) : null}
+            playing={
+              here ? project.messages.indexOf(live[here.slot.index]) : null
+            }
             selected={picked}
             onSelected={setPicked}
             onActivate={(id) => {
@@ -1145,6 +1194,7 @@ export default function App() {
                 <span className="group-tag">This message</span>
                 <input
                   className="name-input"
+                  aria-label="Message Name"
                   value={active.name}
                   onChange={(e) =>
                     updateActive((m) => ({ ...m, name: e.target.value }))
@@ -1264,7 +1314,7 @@ export default function App() {
                         value={textInput}
                         onChange={(e) =>
                           setTextInput(
-                            fitText(e.target.value, textBudgetPx, faceId)
+                            fitText(e.target.value, textBudgetPx, faceId),
                           )
                         }
                         onKeyDown={(e) => {
@@ -1311,7 +1361,9 @@ export default function App() {
                         </select>
                       )}
                       <span
-                        className={textPx >= textBudgetPx ? "warn small" : "mu small"}
+                        className={
+                          textPx >= textBudgetPx ? "warn small" : "mu small"
+                        }
                         title={`Width, not character count: the badge holds ${MAX_BYTE_COLUMNS * 8}px of text across all messages, and the others use ${(MAX_BYTE_COLUMNS - textBudget) * 8}px.`}
                       >
                         {textPx} / {textBudgetPx} px
@@ -1320,7 +1372,11 @@ export default function App() {
                   )}
 
                   {insert === "text" && showEmoji && (
-                    <EmojiPalette chars={emoji} led={led} onPick={insertEmoji} />
+                    <EmojiPalette
+                      chars={emoji}
+                      led={led}
+                      onPick={insertEmoji}
+                    />
                   )}
 
                   {insert === "image" && (
@@ -1381,7 +1437,7 @@ export default function App() {
                           frames: m.frames.map((f, i) =>
                             i === frameIndex
                               ? blankFrame(BADGE_WIDTH)
-                              : resizeFrame(f, BADGE_WIDTH)
+                              : resizeFrame(f, BADGE_WIDTH),
                           ),
                         }))
                       }
@@ -1390,24 +1446,42 @@ export default function App() {
                       Clear
                     </button>
                     <button onClick={() => updateFrame(invert)}>Invert</button>
-                    <button onClick={() => updateFrame(flipH)} title="Flip horizontally">
+                    <button
+                      onClick={() => updateFrame(flipH)}
+                      title="Flip horizontally"
+                    >
                       Flip ⇄
                     </button>
-                    <button onClick={() => updateFrame(flipV)} title="Flip vertically">
+                    <button
+                      onClick={() => updateFrame(flipV)}
+                      title="Flip vertically"
+                    >
                       Flip ⇅
                     </button>
                     <span className="sep" />
                     <span className="mu">Shift</span>
-                    <button onClick={() => updateFrame((f) => shift(f, -1, 0))} title="Shift left">
+                    <button
+                      onClick={() => updateFrame((f) => shift(f, -1, 0))}
+                      title="Shift left"
+                    >
                       ←
                     </button>
-                    <button onClick={() => updateFrame((f) => shift(f, 1, 0))} title="Shift right">
+                    <button
+                      onClick={() => updateFrame((f) => shift(f, 1, 0))}
+                      title="Shift right"
+                    >
                       →
                     </button>
-                    <button onClick={() => updateFrame((f) => shift(f, 0, -1))} title="Shift up">
+                    <button
+                      onClick={() => updateFrame((f) => shift(f, 0, -1))}
+                      title="Shift up"
+                    >
                       ↑
                     </button>
-                    <button onClick={() => updateFrame((f) => shift(f, 0, 1))} title="Shift down">
+                    <button
+                      onClick={() => updateFrame((f) => shift(f, 0, 1))}
+                      title="Shift down"
+                    >
                       ↓
                     </button>
                     {active.mode === "animation" && frameIndex > 0 && (
@@ -1475,7 +1549,6 @@ export default function App() {
             </>
           )}
         </main>
-
       </div>
 
       <TransportBar
@@ -1499,10 +1572,10 @@ export default function App() {
               primary: true,
               onSelect: async () => {
                 const then = ask.then;
+                // Keep the editor inert until the save has finished.
+                const saved = await saveProject();
                 setAsk(null);
-                // Only continue if the save actually happened. A cancelled
-                // Save As must not silently discard the work.
-                if (await saveProject()) then();
+                if (saved) then();
               },
             },
             {
@@ -1536,7 +1609,7 @@ export default function App() {
             {
               label: "Discard",
               danger: true,
-              onSelect: () => void leave(),
+              onSelect: () => leave(),
             },
             { label: "Cancel", onSelect: () => setAsk(null) },
           ]}
@@ -1574,23 +1647,22 @@ export default function App() {
               onSelect: () => {
                 try {
                   const p = parseProject(ask.json);
-                  adopt(p, ask.path);
+                  adopt(p, platform.kind === "web" ? null : ask.path);
                   // Restored work is not yet on disk, so it must read as
                   // unsaved. Anything else invites closing without saving.
                   setSavedJson("");
                   setTextWarning(
                     ask.path
                       ? `Recovered unsaved changes to ${baseName(ask.path)}.`
-                      : "Recovered an unsaved project. Use Save to give it a file."
+                      : "Recovered an unsaved project. Use Save to give it a file.",
                   );
                 } catch (e) {
                   setTextWarning(
                     e instanceof DocError
                       ? `The recovered copy is unreadable: ${e.message}`
-                      : String(e)
+                      : String(e),
                   );
                 }
-                void platform.recoveryClear().catch(() => {});
                 setAsk(null);
               },
             },
@@ -1598,7 +1670,7 @@ export default function App() {
               label: "Discard",
               danger: true,
               onSelect: () => {
-                void platform.recoveryClear().catch(() => {});
+                void clearRecovery();
                 setAsk(null);
               },
             },

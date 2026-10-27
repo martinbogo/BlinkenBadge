@@ -13,12 +13,13 @@
 // limitations under the License.
 
 mod ble;
+mod file_access;
 mod files;
 mod firmware;
-mod menu;
-mod usb;
 mod font;
+mod menu;
 mod protocol;
+mod usb;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -51,7 +52,6 @@ pub struct TextBitmap {
     pub missing: Vec<char>,
 }
 
-
 /// A failed send.
 ///
 /// This used to carry a byte offset so the UI could offer to resume. It could
@@ -73,11 +73,33 @@ fn to_messages(specs: &[MessageSpec], fw: Firmware) -> Result<Vec<Message>, Stri
     if specs.is_empty() {
         return Err("Add at least one message before sending.".into());
     }
+    if specs.len() > 8 {
+        return Err("A badge holds up to 8 messages.".into());
+    }
     specs
         .iter()
         .map(|s| {
             if s.frames.is_empty() {
                 return Err("A message has no frames.".to_string());
+            }
+            if s.frames.len() > protocol::ANIMATION_MAX_FRAMES {
+                return Err("A slot holds up to 8 frames.".into());
+            }
+            let width = s.frames[0].first().map(Vec::len).unwrap_or(0);
+            let checked_frames = if s.mode == Mode::Animation {
+                &s.frames[..]
+            } else {
+                &s.frames[..1]
+            };
+            if width == 0
+                || width > protocol::MAX_BYTE_COLUMNS * 8
+                || checked_frames.iter().any(|f| {
+                    f.len() != protocol::BADGE_HEIGHT || f.iter().any(|row| row.len() != width)
+                })
+            {
+                return Err(
+                    "Frames must have 11 equal-width rows within the badge capacity.".into(),
+                );
             }
             let (bitmap, columns) = if s.mode == Mode::Animation {
                 if s.frames.len() > protocol::ANIMATION_MAX_FRAMES {
@@ -150,20 +172,25 @@ fn font_metrics() -> Vec<FaceInfo> {
 }
 
 #[tauri::command]
-fn render_text(text: String, face: Option<String>) -> TextBitmap {
+fn render_text(text: String, face: Option<String>) -> Result<TextBitmap, String> {
+    if text.len() > 64 * 1024 {
+        return Err("Text exceeds the size limit.".into());
+    }
     let chosen = face
         .as_deref()
         .and_then(font::face)
         .unwrap_or_else(|| font::face(font::DEFAULT_FACE).expect("default face"));
+    if font::measure(chosen, &text) > protocol::MAX_BYTE_COLUMNS * 8 {
+        return Err("Text exceeds badge capacity.".into());
+    }
     let l = font::layout(chosen, &text);
-    TextBitmap {
+    Ok(TextBitmap {
         columns: l.width.div_ceil(8),
         width: l.width,
         rows: l.rows,
         missing: l.missing,
-    }
+    })
 }
-
 
 /// Pick an image and hand it back as a data URL for the frontend to decode.
 /// Returns None if cancelled.
@@ -180,8 +207,7 @@ async fn pick_image(app: AppHandle) -> Result<Option<String>, String> {
     let path = path
         .into_path()
         .map_err(|e| format!("Could not resolve that file: {e}"))?;
-    let bytes = std::fs::read(&path)
-        .map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    let bytes = file_access::read_bounded(&path, file_access::MAX_IMAGE_BYTES)?;
     let mime = match path
         .extension()
         .and_then(|e| e.to_str())
@@ -200,12 +226,12 @@ async fn pick_image(app: AppHandle) -> Result<Option<String>, String> {
     Ok(Some(format!("data:{mime};base64,{b64}")))
 }
 
-
 #[tauri::command]
-async fn ble_scan(
-    timeout_ms: Option<u64>,
-) -> Result<Vec<ble::BadgeInfo>, String> {
-    ble::scan(timeout_ms.unwrap_or(6000))
+async fn ble_scan(timeout_ms: Option<u64>) -> Result<Vec<ble::BadgeInfo>, String> {
+    let _guard = DEVICE_OPERATION
+        .try_lock()
+        .map_err(|_| "A device operation is already running.")?;
+    ble::scan(timeout_ms.unwrap_or(6000).clamp(100, 10000))
         .await
         .map_err(|e| e.to_string())
 }
@@ -228,10 +254,15 @@ async fn send_to_badge_usb(
     messages: Vec<MessageSpec>,
     brightness: u8,
 ) -> Result<usize, SendError> {
+    let _guard = DEVICE_OPERATION.try_lock().map_err(|_| SendError {
+        message: "A device operation is already running.".into(),
+    })?;
     // Ask the device rather than trusting whatever the UI last saw: the badge
     // may have been swapped since.
     let fw = usb::find()
-        .map_err(|e| SendError { message: e.to_string() })?
+        .map_err(|e| SendError {
+            message: e.to_string(),
+        })?
         .map(|i| i.firmware)
         .unwrap_or_default();
     let data = encode(&messages, brightness, fw).map_err(|message| SendError { message })?;
@@ -258,95 +289,37 @@ async fn send_to_badge(
     brightness: u8,
     device_id: Option<String>,
 ) -> Result<usize, SendError> {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
-
-    // Encoded twice over: once here to size the progress bar and reject a bad
-    // document before connecting, then again inside the send once the badge has
-    // said which firmware it runs. The second answer is the one transmitted.
-    let data = encode(&messages, brightness, Firmware::default())
-        .map_err(|message| SendError { message })?;
-    let total_bytes = data.len();
-    let total_writes = total_bytes.div_ceil(ble::CHUNK_SIZE);
-
-    // A wedged CoreBluetooth write does not respond to `tokio::time::timeout`:
-    // the future never completes and never wakes. So run the transfer on its
-    // own task and watch it from here. If progress stops advancing we give up
-    // and hand control back to the UI, leaving the orphaned task to unwind
-    // whenever the OS eventually lets go.
-    let progress = Arc::new(AtomicUsize::new(0));
-    let seen = progress.clone();
-    let emitter = app.clone();
-
-    let spec = messages;
-    let task = tokio::spawn(async move {
-        let encode_for = move |fw: Firmware| encode(&spec, brightness, fw);
-        ble::send(encode_for, device_id.as_deref(), |chunk, total| {
-            seen.store(chunk, Ordering::Relaxed);
-            let _ = emitter.emit("send-progress", Progress { chunk, total });
-        })
-        .await
-        .map_err(|e| e.to_string())
-    });
-
-    let mut last = 0usize;
-    let mut idle = std::time::Duration::ZERO;
-    let tick = std::time::Duration::from_millis(500);
-
-    tokio::pin!(task);
-    loop {
-        match tokio::time::timeout(tick, &mut task).await {
-            Ok(joined) => {
-                return match joined {
-                    Ok(Ok(_fw)) => Ok(total_bytes),
-                    Ok(Err(message)) => Err(SendError { message }),
-                    Err(_) => Err(SendError {
-                        message: "The transfer task stopped unexpectedly.".into(),
-                    }),
-                }
-            }
-            Err(_) => {
-                let now = progress.load(Ordering::Relaxed);
-                if now != last {
-                    last = now;
-                    idle = std::time::Duration::ZERO;
-                    continue;
-                }
-                idle += tick;
-                if idle < STALL_TIMEOUT {
-                    continue;
-                }
-                return Err(SendError {
-                    message: format!(
-                        "The upload stopped after {last} of {total_writes} writes.\n\n\
-                         The badge leaves Bluetooth mode on its own after a few \
-                         minutes, and stops responding without closing the \
-                         connection. Press its first button to put it back into \
-                         Bluetooth mode, then send again from the start.\n\n\
-                         Connecting the badge over USB avoids this entirely and is \
-                         much faster.",
-                    ),
-                });
-            }
-        }
-    }
+    let _guard = DEVICE_OPERATION.try_lock().map_err(|_| SendError {
+        message: "A device operation is already running.".into(),
+    })?;
+    // Validate before opening a connection. Encode again after firmware detection.
+    encode(&messages, brightness, Firmware::default()).map_err(|message| SendError { message })?;
+    ble::send(
+        |fw| encode(&messages, brightness, fw),
+        device_id.as_deref(),
+        |chunk, total| {
+            let _ = app.emit("send-progress", Progress { chunk, total });
+        },
+    )
+    .await
+    .map_err(|e| SendError {
+        message: e.to_string(),
+    })
 }
 
-/// How long a transfer may make no forward progress before we call it dead.
-const STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(12);
+static DEVICE_OPERATION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(file_access::FileAccess::default())
         .setup(|app| {
             usb::watch(app.handle().clone());
             menu::install(app.handle())?;
             pending_from_argv();
             Ok(())
         })
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             render_text,
             font_metrics,
@@ -412,6 +385,9 @@ static PENDING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new()
 
 #[cfg(target_os = "macos")]
 fn remember_pending(app: &AppHandle, path: String) {
+    let Ok(path) = files::grant_native(app, &path) else {
+        return;
+    };
     if let Ok(mut q) = PENDING.lock() {
         q.push(path.clone());
     }
@@ -434,16 +410,47 @@ fn pending_from_argv() {
 }
 
 #[tauri::command]
-fn take_pending_files() -> Vec<String> {
+fn take_pending_files(app: AppHandle) -> Vec<String> {
     PENDING
         .lock()
-        .map(|mut q| std::mem::take(&mut *q))
+        .map(|mut q| {
+            std::mem::take(&mut *q)
+                .into_iter()
+                .filter_map(|p| files::grant_native(&app, &p).ok())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_text_is_rejected_before_rendering() {
+        assert!(render_text("A".repeat(6000), None).is_err());
+    }
+
+    #[test]
+    fn ragged_and_oversized_ipc_frames_are_rejected() {
+        let mut spec = MessageSpec {
+            frames: vec![blank_frame(44)],
+            mode: Mode::Fixed,
+            speed: 4,
+            blink: false,
+            ants: false,
+        };
+        spec.frames[0][0].push(true);
+        assert!(to_messages(&[spec], Firmware::default()).is_err());
+        let spec = MessageSpec {
+            frames: vec![blank_frame(protocol::MAX_BYTE_COLUMNS * 8 + 1)],
+            mode: Mode::Fixed,
+            speed: 4,
+            blink: false,
+            ants: false,
+        };
+        assert!(to_messages(&[spec], Firmware::default()).is_err());
+    }
 
     fn blank_frame(width: usize) -> Vec<Vec<bool>> {
         vec![vec![false; width]; protocol::BADGE_HEIGHT]
@@ -481,14 +488,14 @@ mod tests {
 
     #[test]
     fn an_unknown_face_falls_back_to_the_default() {
-        let a = render_text("HI".into(), Some("no-such-face".into()));
-        let b = render_text("HI".into(), None);
+        let a = render_text("HI".into(), Some("no-such-face".into())).unwrap();
+        let b = render_text("HI".into(), None).unwrap();
         assert_eq!(a.rows, b.rows, "a stale face id must not blank the stamp");
     }
 
     #[test]
     fn render_text_round_trips_through_the_font() {
-        let out = render_text("HI".into(), None);
+        let out = render_text("HI".into(), None).unwrap();
         assert_eq!(out.columns, 2);
         assert_eq!(out.width, 16);
         assert_eq!(out.rows.len(), protocol::BADGE_HEIGHT);
@@ -499,7 +506,6 @@ mod tests {
             vec![true, true, true, true, true, true, true, false]
         );
     }
-
 
     #[test]
     fn empty_input_is_rejected_with_a_readable_message() {

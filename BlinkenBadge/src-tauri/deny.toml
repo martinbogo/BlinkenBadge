@@ -1,0 +1,8 @@
+# Review deadline: 2027-01-27
+# scripts/check-advisory-exceptions.py enforces this deadline.
+[advisories]
+# These are maintenance notices in current upstream desktop dependencies.
+# Vulnerability and unsoundness advisories remain denied.
+ignore = [
+  { id = "RUSTSEC-2024-0370", reason = "GTK 0.18 uses proc-macro-error; no maintained GTK3 replacement in Tauri." },
+]

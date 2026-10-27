@@ -86,7 +86,7 @@ Note: Header byte 5 uses a 4-entry table index in bits 7:4. Values of `0x40` and
 
 ### macOS (Developer ID)
 
-Signing and notarization run during the `build` matrix job on `macos-latest` when repository secrets are present:
+Signing and notarization run only in the macOS build step after checks and `release` environment approval. All signing credentials are required for official builds:
 
 | Secret | Value Description |
 |---|---|
@@ -115,7 +115,7 @@ Signing runs in the `sign-windows` job on `ubuntu-24.04` via the `release` GitHu
 | Publisher Identity | `CN=Martin Bogomolni, O=Martin Bogomolni, L=Portland, ST=or, C=US` |
 | Timestamp Authority | `http://timestamp.acs.microsoft.com` (RFC3161) |
 | Tool | `jsign 7.5` (`java -jar jsign.jar --storetype TRUSTEDSIGNING ...`) |
-| Verification | `osslsigncode extract-signature -in <file> -out sig.der` + `openssl pkcs7 -inform DER -in sig.der -print_certs -noout` |
+| Verification | Windows `Get-AuthenticodeSignature` with valid trust, publisher, and timestamp checks |
 
 ## Release Procedure
 
@@ -133,19 +133,20 @@ To cut a new release:
    grep -m1 '^version' BlinkenBadge/src-tauri/Cargo.toml
    node -p "require('./BlinkenBadge/src-tauri/tauri.conf.json').version"
    ```
-3. Commit and tag the commit:
+3. Merge the version change through a pull request with passing `checks` and `codeql` jobs.
+4. Tag the merged commit on `main`:
    ```bash
-   git commit -am "BlinkenBadge <version>"
+   git switch main
+   git pull --ff-only
    git tag -a v<version> -m "BlinkenBadge <version>"
-   git push origin main
    git push origin v<version>
    ```
-4. Monitor `.github/workflows/release.yml`:
+5. Monitor `.github/workflows/release.yml` and approve signing in the `release` environment:
    ```bash
    gh run list --workflow=release.yml --limit 1
    gh run watch
    ```
-5. Publish draft release:
+6. Publish draft release:
    ```bash
    gh release edit v<version> --notes-file <path_to_notes.md> --draft=false --latest
    ```
@@ -164,3 +165,13 @@ All repository documentation and UI text must strictly follow these rules:
 8. Reference data: Tables with explicit column headers.
 9. Leading with the point: Put the reason after the instruction, briefly, only when needed.
 10. Verification: Only document verified behavior. Mark estimates as estimates.
+
+## Repository Protections
+
+1. Require pull requests and successful `checks` and `codeql` jobs for `main`.
+2. Deny force pushes and deletion of `main`.
+3. Restrict `v*` tag creation to administrators and deny tag changes or deletion.
+4. Require maintainer approval before release signing; permit self-approval for this single-maintainer repository.
+5. Keep Dependabot alerts, security updates, secret scanning, push protection, and private vulnerability reporting enabled.
+
+Versioned ruleset definitions are in `.github/rulesets/`. The GTK maintenance exception in `BlinkenBadge/src-tauri/deny.toml` must be reviewed before January 27, 2027. Do not ignore vulnerability or unsoundness advisories.

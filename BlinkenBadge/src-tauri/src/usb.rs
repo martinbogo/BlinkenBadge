@@ -147,7 +147,11 @@ pub fn watch(app: AppHandle) {
 // crash in Apple's code rather than a lifetime mistake in ours.
 
 type ProgressFn = Box<dyn FnMut(usize, usize) + Send>;
-type Job = (Vec<u8>, ProgressFn, std::sync::mpsc::Sender<Result<usize, String>>);
+type Job = (
+    Vec<u8>,
+    ProgressFn,
+    std::sync::mpsc::Sender<Result<usize, String>>,
+);
 
 static HID: std::sync::OnceLock<std::sync::mpsc::Sender<Job>> = std::sync::OnceLock::new();
 
@@ -182,8 +186,8 @@ pub fn send(
     data: &[u8],
     on_progress: impl FnMut(usize, usize) + Send + 'static,
 ) -> Result<usize, UsbError> {
-    let worker = hid_worker()
-        .ok_or_else(|| UsbError::Message("The USB thread is not running.".into()))?;
+    let worker =
+        hid_worker().ok_or_else(|| UsbError::Message("The USB thread is not running.".into()))?;
     let (tx, rx) = std::sync::mpsc::channel();
     worker
         .send((data.to_vec(), Box::new(on_progress), tx))
@@ -194,10 +198,7 @@ pub fn send(
 }
 
 /// The actual transfer. Only ever called on the HID thread.
-fn write_reports(
-    data: &[u8],
-    on_progress: &mut ProgressFn,
-) -> Result<usize, UsbError> {
+fn write_reports(data: &[u8], on_progress: &mut ProgressFn) -> Result<usize, UsbError> {
     let api = api()?;
     let dev = api.open(VID, PID).map_err(|e| match e {
         hidapi::HidError::HidApiError { .. } => UsbError::NotFound,

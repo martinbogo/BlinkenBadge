@@ -49,6 +49,7 @@ export function ToolPalette({
           className={`tool-btn${t === tool ? " active" : ""}`}
           onClick={() => onTool(t)}
           title={`${TOOL_LABELS[t]}  (${TOOL_KEYS[t].toUpperCase()})`}
+          aria-label={TOOL_LABELS[t]}
           aria-pressed={t === tool}
         >
           <span className="tool-icon">{ICONS[t]}</span>

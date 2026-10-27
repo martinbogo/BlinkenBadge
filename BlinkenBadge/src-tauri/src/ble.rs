@@ -48,6 +48,8 @@ const MODEL_CHAR: Uuid = Uuid::from_u128(0x00002a24_0000_1000_8000_00805f9b34fb)
 const WRITE_TIMEOUT: Duration = Duration::from_secs(8);
 const WRITE_ATTEMPTS: usize = 3;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(8);
+const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Debug, thiserror::Error)]
 pub enum BleError {
@@ -77,8 +79,7 @@ pub enum BleError {
     #[error(
         "The link dropped after {done} of {total} chunks. The badge leaves Bluetooth \
          mode on a timeout, so a slow upload gets truncated part-way and the badge is \
-         left showing a half-written buffer. Move the badge closer, raise the chunk \
-         size, or send fewer frames, then press the first button and retry."
+         left showing a half-written buffer. Move the badge closer or send fewer frames, then press the first button and retry."
     )]
     Truncated { done: usize, total: usize },
     #[error(
@@ -96,8 +97,6 @@ pub enum BleError {
     #[error("Connecting to the badge timed out. Press the first button and retry.")]
     ConnectTimeout,
 }
-
-
 
 #[derive(Debug, Clone, Serialize)]
 pub struct BadgeInfo {
@@ -124,9 +123,11 @@ pub async fn scan(timeout_ms: u64) -> Result<Vec<BadgeInfo>, BleError> {
     let central = adapter().await?;
     // CoreBluetooth returns more reliable results when it is not given a
     // service filter, so scan unfiltered and match on our side.
-    central.start_scan(ScanFilter::default()).await?;
+    tokio::time::timeout(DISCOVERY_TIMEOUT, central.start_scan(ScanFilter::default()))
+        .await
+        .map_err(|_| BleError::Message("Bluetooth scan timed out.".into()))??;
     tokio::time::sleep(Duration::from_millis(timeout_ms)).await;
-    let _ = central.stop_scan().await;
+    let _ = tokio::time::timeout(DISCONNECT_TIMEOUT, central.stop_scan()).await;
 
     let mut out = Vec::new();
     for p in central.peripherals().await? {
@@ -175,11 +176,7 @@ async fn find(central: &Adapter, id: Option<&str>) -> Result<Peripheral, BleErro
 /// position across a reconnect. It does not, so a resumed transfer produced a
 /// garbled buffer rather than a finished one. A failed upload has to be redone
 /// from byte zero.
-pub async fn send<F, E>(
-    encode: E,
-    id: Option<&str>,
-    mut on_progress: F,
-) -> Result<Firmware, BleError>
+pub async fn send<F, E>(encode: E, id: Option<&str>, mut on_progress: F) -> Result<usize, BleError>
 where
     F: FnMut(usize, usize),
     E: FnOnce(Firmware) -> Result<Vec<u8>, String>,
@@ -189,40 +186,42 @@ where
     // A prior scan may not have run in this process; do a short one so the
     // platform cache is populated before we look the peripheral up.
     if find(&central, id).await.is_err() {
-        central.start_scan(ScanFilter::default()).await?;
+        tokio::time::timeout(DISCOVERY_TIMEOUT, central.start_scan(ScanFilter::default()))
+            .await
+            .map_err(|_| BleError::Message("Bluetooth scan timed out.".into()))??;
         tokio::time::sleep(Duration::from_millis(4000)).await;
-        let _ = central.stop_scan().await;
+        let _ = tokio::time::timeout(DISCONNECT_TIMEOUT, central.stop_scan()).await;
     }
 
     let peripheral = find(&central, id).await?;
 
-    if !peripheral.is_connected().await? {
-        // Without a bound this waits forever when the badge has already left
-        // Bluetooth mode.
-        tokio::time::timeout(CONNECT_TIMEOUT, peripheral.connect())
-            .await
-            .map_err(|_| BleError::ConnectTimeout)??;
-    }
-    // Identify before encoding, because the firmware decides the animation
-    // stride and therefore the bytes. Doing it on this connection rather than
-    // in a separate probe matters: the badge leaves Bluetooth mode after an
-    // operation, so a second connection is not something we can count on.
-    peripheral.discover_services().await?;
-    let fw = identify(&peripheral).await;
-
-    let data = match encode(fw) {
-        Ok(d) => d,
-        Err(e) => {
-            let _ = peripheral.disconnect().await;
-            return Err(BleError::Message(e));
+    // Keep cleanup outside the operation so every failure disconnects.
+    let result = async {
+        if !peripheral.is_connected().await? {
+            tokio::time::timeout(CONNECT_TIMEOUT, peripheral.connect())
+                .await
+                .map_err(|_| BleError::ConnectTimeout)??;
         }
-    };
-
-    let result = write_all(&peripheral, &data, fw, &mut on_progress).await;
-
-    // Stock firmware only latches the upload once the link drops.
-    let _ = peripheral.disconnect().await;
-    result.map(|()| fw)
+        tokio::time::timeout(DISCOVERY_TIMEOUT, peripheral.discover_services())
+            .await
+            .map_err(|_| BleError::Message("Bluetooth service discovery timed out.".into()))??;
+        let fw = tokio::time::timeout(DISCOVERY_TIMEOUT, identify(&peripheral))
+            .await
+            .map_err(|_| BleError::Message("Firmware detection timed out.".into()))?;
+        let data = encode(fw).map_err(BleError::Message)?;
+        write_all(&peripheral, &data, fw, &mut on_progress).await?;
+        Ok(data.len())
+    }
+    .await;
+    let disconnected = tokio::time::timeout(DISCONNECT_TIMEOUT, peripheral.disconnect()).await;
+    match (result, disconnected) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(_)) => Err(BleError::Message(
+            "Bluetooth disconnect timed out; reconnect the badge before retrying.".into(),
+        )),
+        (Ok(_), Ok(Err(error))) => Err(error.into()),
+        (Ok(bytes), Ok(Ok(()))) => Ok(bytes),
+    }
 }
 
 /// Read the Device Information Service, if there is one.
@@ -285,12 +284,12 @@ where
                 }
                 Ok(Err(_)) => last = Some(BleError::Truncated { done: i, total }),
                 Err(_) => {
-                    last = Some(BleError::WriteTimeout {
+                    return Err(BleError::WriteTimeout {
                         done: i + 1,
                         total,
                         size: CHUNK_SIZE,
                         secs: WRITE_TIMEOUT.as_secs(),
-                    })
+                    });
                 }
             }
             if attempt + 1 < WRITE_ATTEMPTS {
