@@ -37,7 +37,6 @@ export default function Sheet({
         "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]",
       ),
     ];
-    (items()[0] ?? dialog).focus();
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !locked.current) {
         e.preventDefault();
@@ -72,6 +71,13 @@ export default function Sheet({
       if (previous?.isConnected) previous.focus();
     };
   }, []);
+  useLayoutEffect(() => {
+    // Keep focus in the sheet when switching to a confirmation or submenu.
+    const dialog = ref.current!;
+    (
+      dialog.querySelector<HTMLElement>("button:not(:disabled)") ?? dialog
+    ).focus();
+  }, [title]);
   return (
     <div
       className="mobile-sheet-overlay"
