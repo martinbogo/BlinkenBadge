@@ -87,12 +87,8 @@ jobs:
       # hidraw backend, which is how the badge is reached over USB.
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev \
-            librsvg2-dev libudev-dev
+        timeout-minutes: 8
+        run: bash scripts/install-linux-dependencies.sh
 
       - name: Install dependencies
         working-directory: BlinkenBadge
