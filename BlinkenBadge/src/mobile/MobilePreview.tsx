@@ -33,7 +33,9 @@ export function MiniBadge({
     return () => clearInterval(timer);
   }, [playing, message.blink]);
   const pixels = renderPreview(
-    step === undefined ? { ...message, mode: "animation" } : message,
+    step === undefined && message.mode !== "fixed"
+      ? { ...message, mode: "animation" }
+      : message,
     step ?? 0,
   );
   return (

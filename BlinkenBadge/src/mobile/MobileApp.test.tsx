@@ -10,14 +10,15 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { TextBitmap } from "../types";
 import type { Recovery } from "../platform/types";
-import { blankFrame, newMessage } from "../badge";
+import { blankFrame, newMessage, renderPreview } from "../badge";
 import { parseMessage, parseProject, serializeProject } from "../doc";
 
 const host = vi.hoisted(() => ({
   recoveryRead: vi.fn(async (): Promise<Recovery | null> => null),
   recoveryWrite: vi.fn(async () => {}),
-  renderText: vi.fn(async (text: string) => ({
+  renderText: vi.fn(async (text: string): Promise<TextBitmap> => ({
     width: 44,
     columns: 6,
     missing: [],
@@ -401,4 +402,79 @@ it("returns Done to the root history entry instead of reopening the editor on Ba
       mobileDepth: 0,
     });
   }
+});
+
+it("retains short text widths so Fixed mode centers like the desktop editor", async () => {
+  const user = userEvent.setup();
+  const message = {
+    ...newMessage("fixed"),
+    text: { value: "", face: "serif" },
+  };
+  host.recoveryRead.mockResolvedValue({
+    json: serializeProject({ brightness: 100, messages: [message] }),
+    path: null,
+    saved_at: "",
+  });
+  render(<MobileApp />);
+  await user.click(await screen.findByRole("button", { name: /Untitled/ }));
+  const rows = blankFrame(16);
+  rows[4][0] = true;
+  host.renderText.mockResolvedValueOnce({
+    rows,
+    width: 16,
+    columns: 2,
+    missing: [],
+  });
+  await user.type(screen.getByRole("textbox", { name: "Message" }), "HI");
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "Done" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Project Options" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Export Project" }));
+  const back = parseProject(host.exportDocument.mock.calls[0][0] as string)
+    .messages[0];
+  expect(back.width).toBe(16);
+  expect(renderPreview(back, 0)[4][14]).toBe(true);
+});
+
+it("waits for text rendering before allowing a mode change", async () => {
+  const user = userEvent.setup();
+  await open();
+  await user.click(screen.getByRole("button", { name: /Untitled/ }));
+  let finish!: (value: {
+    rows: boolean[][];
+    width: number;
+    columns: number;
+    missing: string[];
+  }) => void;
+  const pending = new Promise<{
+    rows: boolean[][];
+    width: number;
+    columns: number;
+    missing: string[];
+  }>((resolve) => {
+    finish = resolve;
+  });
+  host.renderText.mockReturnValueOnce(pending);
+  await user.type(screen.getByRole("textbox", { name: "Message" }), "A");
+  await waitFor(() =>
+    expect(host.renderText).toHaveBeenLastCalledWith("A", "serif"),
+  );
+  expect(
+    (screen.getByRole("button", { name: "Scroll left" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  finish({ rows: blankFrame(8), width: 8, columns: 1, missing: [] });
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "Scroll left" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
 });
