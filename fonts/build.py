@@ -21,7 +21,7 @@ the 'e' crossbar sits a row too high by reading 0x7C.
     ./fonts/build.py                 rebuild every face
     ./fonts/build.py cartoon         rebuild one
 
-Output goes to badge-studio/src-tauri/src/font/<id>.rs and is committed, so a
+Output goes to BlinkenBadge/src-tauri/src/font/<id>.rs and is committed, so a
 normal build never runs this.
 """
 import pathlib
@@ -29,7 +29,7 @@ import re
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-OUT = HERE.parent / "badge-studio" / "src-tauri" / "src" / "font"
+OUT = HERE.parent / "BlinkenBadge" / "src-tauri" / "src" / "font"
 
 ROWS = 11
 # Glyph rows are u16, so a glyph can be at most this wide. Double-width CJK

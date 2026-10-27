@@ -71,7 +71,7 @@ pub enum BleError {
          firmware, so PIN security is probably switched on. Either upload over \
          USB, which never asks for a code, or turn the PIN off in the badge's \
          SECURITY menu, or press KEY4 while it is in BT-PAIRING mode to skip the \
-         code for one session. Badge Studio cannot send the code itself yet."
+         code for one session. BlinkenBadge cannot send the code itself yet."
     )]
     NeedsPin,
     #[error(

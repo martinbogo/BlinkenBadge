@@ -1,5 +1,5 @@
 {
-  "name": "badge-studio",
+  "name": "blinkenbadge",
   "private": true,
   "version": "1.0.30",
   "type": "module",
@@ -31,11 +31,11 @@
     "vite": "^8.2.0",
     "vitest": "^4.1.10"
   },
-  "description": "Animation studio for the nyx v1 LED badge",
+  "description": "Animation editor for the nyx v1 LED badge",
   "license": "Apache-2.0",
   "author": "Martin Bogomolni",
   "repository": {
     "type": "git",
-    "url": "https://github.com/martinbogo/badge-studio.git"
+    "url": "https://github.com/martinbogo/blinkenbadge.git"
   }
 }

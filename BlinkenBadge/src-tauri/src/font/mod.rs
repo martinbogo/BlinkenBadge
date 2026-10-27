@@ -323,7 +323,7 @@ mod tests {
                 "",
                 " ",
                 "HI",
-                "Badge Studio",
+                "BlinkenBadge",
                 "A\u{5b57}",
                 "\u{5b57}\u{5b57}\u{5b57}",
                 "!@#$%^&*()",

@@ -6,7 +6,7 @@ use super::{Face, Glyph};
 pub static CARTOON: Face = Face {
     id: "cartoon",
     name: "Cartoon",
-    notice: "Original pixel art for Badge Studio.",
+    notice: "Original pixel art for BlinkenBadge.",
     jitter: &[0, -1, 0, 0, -1, 0, -1, 0, 0, -1, 0],
     pickable: true,
     glyphs: GLYPHS,

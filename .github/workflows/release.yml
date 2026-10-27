@@ -16,7 +16,7 @@ permissions:
 env:
   # Every runner builds natively, so no --target is passed and the bundle path
   # is the same everywhere.
-  BUNDLE: badge-studio/src-tauri/target/release/bundle
+  BUNDLE: BlinkenBadge/src-tauri/target/release/bundle
 
 jobs:
   # A tag that disagrees with the manifests would produce installers whose
@@ -29,9 +29,9 @@ jobs:
       - name: Tag must match the version in the manifests
         run: |
           TAG="${GITHUB_REF_NAME#v}"
-          PKG=$(node -p "require('./badge-studio/package.json').version")
-          CARGO=$(grep -m1 '^version' badge-studio/src-tauri/Cargo.toml | cut -d'"' -f2)
-          CONF=$(node -p "require('./badge-studio/src-tauri/tauri.conf.json').version")
+          PKG=$(node -p "require('./BlinkenBadge/package.json').version")
+          CARGO=$(grep -m1 '^version' BlinkenBadge/src-tauri/Cargo.toml | cut -d'"' -f2)
+          CONF=$(node -p "require('./BlinkenBadge/src-tauri/tauri.conf.json').version")
           echo "tag=$TAG package.json=$PKG Cargo.toml=$CARGO tauri.conf.json=$CONF"
           for V in "$PKG" "$CARGO" "$CONF"; do
             if [ "$V" != "$TAG" ]; then
@@ -77,13 +77,13 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: badge-studio/package-lock.json
+          cache-dependency-path: BlinkenBadge/package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: badge-studio/src-tauri
+          workspaces: BlinkenBadge/src-tauri
 
       # webkit2gtk 4.1 is the Tauri v2 webview. libudev is needed by hidapi's
       # hidraw backend, which is how the badge is reached over USB.
@@ -97,7 +97,7 @@ jobs:
             librsvg2-dev libudev-dev
 
       - name: Install dependencies
-        working-directory: badge-studio
+        working-directory: BlinkenBadge
         run: npm ci
 
       # The suites are deliberately not run here. checks.yml runs them on every
@@ -115,12 +115,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: badge-studio
+          projectPath: BlinkenBadge
 
       - name: Verify macOS signature
         if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != ''
         run: |
-          APP="$BUNDLE/macos/Badge Studio.app"
+          APP="$BUNDLE/macos/BlinkenBadge.app"
           echo "--- codesign ---"
           codesign --verify --deep --strict --verbose=2 "$APP"
           echo "--- identity ---"
@@ -136,10 +136,10 @@ jobs:
       - name: Build Linux tarball
         if: runner.os == 'Linux'
         run: |
-          VERSION=$(node -p "require('./badge-studio/package.json').version")
-          STAGE="badge-studio-${VERSION}-linux-x86_64"
+          VERSION=$(node -p "require('./BlinkenBadge/package.json').version")
+          STAGE="blinkenbadge-${VERSION}-linux-x86_64"
           mkdir -p "$STAGE"
-          cp badge-studio/src-tauri/target/release/badge-studio "$STAGE/"
+          cp BlinkenBadge/src-tauri/target/release/blinkenbadge "$STAGE/"
           cp README.md LICENSE PROTOCOL.md 99-led-badge.rules "$STAGE/"
           tar -czf "${STAGE}.tar.gz" "$STAGE"
           sha256sum "${STAGE}.tar.gz"
@@ -187,7 +187,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Badge Studio ${GITHUB_REF_NAME#v}" \
+            --title "BlinkenBadge ${GITHUB_REF_NAME#v}" \
             --generate-notes \
             --draft \
             dist/*

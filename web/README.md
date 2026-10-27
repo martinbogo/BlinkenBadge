@@ -1,17 +1,17 @@
-# Badge Studio in the browser
+# BlinkenBadge in the browser
 
 The same editor as the desktop app, built for the web. Drawing tools, the
 timeline, message slots, documents and both transports, with nothing installed.
 
-It is the only way to use Badge Studio on Android. It cannot run on iOS, where
+It is the only way to use BlinkenBadge on Android. It cannot run on iOS, where
 Safari implements neither WebHID nor Web Bluetooth on any platform.
 
 ## Building and running
 
 ```bash
-cd badge-studio
+cd BlinkenBadge
 npm run dev:web             # http://localhost:5180
-npm run build:web           # -> badge-studio/dist-web/
+npm run build:web           # -> BlinkenBadge/dist-web/
 ```
 
 `localhost` counts as a secure context, so the badge works in `dev:web` without
@@ -19,11 +19,11 @@ TLS.
 
 ## Deploying
 
-Upload the contents of `badge-studio/dist-web/` to any static host:
+Upload the contents of `BlinkenBadge/dist-web/` to any static host:
 
 ```bash
 npm run build:web
-scp -r badge-studio/dist-web/* you@example.com:/var/www/html/badge/
+scp -r BlinkenBadge/dist-web/* you@example.com:/var/www/html/badge/
 ```
 
 **HTTPS is mandatory.** WebHID and Web Bluetooth are gated on a secure context.

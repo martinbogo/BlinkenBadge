@@ -70,7 +70,7 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let builder = {
         // macOS expects the leftmost menu to be the app's own, and expects Quit
         // to live there rather than under File.
-        let app_menu = SubmenuBuilder::new(app, "Badge Studio")
+        let app_menu = SubmenuBuilder::new(app, "BlinkenBadge")
             .about(None)
             .separator()
             .hide()
@@ -93,7 +93,7 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 /// taken in a hurry, so quitting goes through the frontend like every other
 /// document command.
 fn quit_item(app: &AppHandle) -> tauri::Result<tauri::menu::MenuItem<Wry>> {
-    MenuItemBuilder::with_id("quit-app", "Quit Badge Studio")
+    MenuItemBuilder::with_id("quit-app", "Quit BlinkenBadge")
         .accelerator("CmdOrCtrl+Q")
         .build(app)
 }

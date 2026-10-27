@@ -32,7 +32,7 @@ from build import ROWS, pack, parse
 HERE = pathlib.Path(__file__).resolve().parent
 OUT = HERE.parent / "web" / "fonts.json"
 
-# Fallback order, mirroring FACES in badge-studio/src-tauri/src/font/mod.rs.
+# Fallback order, mirroring FACES in BlinkenBadge/src-tauri/src/font/mod.rs.
 ORDER = ["serif", "sans", "cartoon", "future", "emoji"]
 
 

@@ -5,6 +5,6 @@
     <!-- macOS refuses to hand out a CoreBluetooth session without this string,
          and shows it verbatim in the permission prompt. -->
     <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>Badge Studio uses Bluetooth to find your LED badge and send animations to it.</string>
+    <string>BlinkenBadge uses Bluetooth to find your LED badge and send animations to it.</string>
 </dict>
 </plist>

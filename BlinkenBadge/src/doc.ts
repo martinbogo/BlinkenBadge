@@ -110,11 +110,11 @@ function storeMessage(m: Message): StoredMessage {
 
 function checkVersion(v: unknown, what: string) {
   if (typeof v !== "number") {
-    throw new DocError(`This does not look like a Badge Studio ${what}.`);
+    throw new DocError(`This does not look like a BlinkenBadge ${what}.`);
   }
   if (v > DOC_VERSION) {
     throw new DocError(
-      `This ${what} was written by a newer version of Badge Studio ` +
+      `This ${what} was written by a newer version of BlinkenBadge ` +
         `(format ${v}, this build reads ${DOC_VERSION}). Update the app to open it.`
     );
   }
@@ -273,7 +273,7 @@ export function parseMessage(text: string): Message {
         "That is a whole project, not a single message. Use File > Open Project."
       );
     }
-    throw new DocError("That does not look like a Badge Studio message.");
+    throw new DocError("That does not look like a BlinkenBadge message.");
   }
   checkVersion(doc.version, "message");
   return readMessage(doc.message, 0);

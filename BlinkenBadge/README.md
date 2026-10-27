@@ -1,4 +1,4 @@
-# badge-studio/
+# BlinkenBadge/
 
 The desktop app. See the [repository README](../README.md) for what this is,
 how to run it, and the protocol it speaks.

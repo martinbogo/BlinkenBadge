@@ -756,7 +756,7 @@ export default function App() {
   // and whether it has been saved.
   useEffect(() => {
     const name = baseName(docPath) ?? "Untitled";
-    platform.setTitle(`${dirty ? "• " : ""}${name} - Badge Studio`);
+    platform.setTitle(`${dirty ? "• " : ""}${name} - BlinkenBadge`);
   }, [docPath, dirty]);
 
   // Autosave the working copy for crash recovery. Never writes to the user's
@@ -963,7 +963,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <span className="dot" />
-          Badge Studio
+          BlinkenBadge
         </div>
         {/* The desktop has the operating system's menu; the browser has none. */}
         {platform.kind === "web" && <WebMenuBar />}
@@ -1483,7 +1483,7 @@ export default function App() {
 
       {ask?.kind === "recover" && (
         <Modal
-          title="Badge Studio closed unexpectedly"
+          title="BlinkenBadge closed unexpectedly"
           body={
             <>
               <p>

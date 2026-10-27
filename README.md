@@ -1,4 +1,4 @@
-# Badge Studio
+# BlinkenBadge
 
 Design animations for the nyx v1 LED badge (WCH CH582, 44x11 monochrome
 matrix) and upload them over USB or Bluetooth.
@@ -6,7 +6,7 @@ matrix) and upload them over USB or Bluetooth.
 Runs on macOS, Windows and Linux, and works with the badge's stock firmware.
 No reflashing is required.
 
-![Badge Studio editor](docs/editor.png)
+![BlinkenBadge editor](docs/editor.png)
 
 ![Animation timeline](docs/animation.png)
 
@@ -16,8 +16,8 @@ Prebuilt packages are on the [Releases](../../releases) page.
 
 | Platform | File |
 |---|---|
-| macOS (Apple Silicon) | `Badge.Studio_<version>_aarch64.dmg` |
-| Windows | `Badge.Studio_<version>_x64-setup.exe` or `.msi` |
+| macOS (Apple Silicon) | `BlinkenBadge_<version>_aarch64.dmg` |
+| Windows | `BlinkenBadge_<version>_x64-setup.exe` or `.msi` |
 | Debian, Ubuntu | `.deb` |
 | Fedora, RHEL | `.rpm` |
 | Any Linux, portable | `.AppImage` |
@@ -40,12 +40,12 @@ The same editor runs in a browser with nothing installed: drawing tools, the
 timeline, message slots, documents and both transports.
 
 ```bash
-cd badge-studio
+cd BlinkenBadge
 npm run dev:web      # http://localhost:5180
-npm run build:web    # -> badge-studio/dist-web/, upload anywhere over HTTPS
+npm run build:web    # -> BlinkenBadge/dist-web/, upload anywhere over HTTPS
 ```
 
-It is the only way to use Badge Studio on **Android**. It cannot run on iOS,
+It is the only way to use BlinkenBadge on **Android**. It cannot run on iOS,
 where Safari implements neither WebHID nor Web Bluetooth. Three things differ
 from the desktop and always will: connecting a badge needs a click, documents
 are handles rather than paths, and double-clicking a `.badge` file does not
@@ -212,7 +212,7 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
 Then:
 
 ```bash
-cd badge-studio
+cd BlinkenBadge
 npm install
 npm run tauri dev            # run it
 npm run tauri build          # build installers
@@ -220,7 +220,7 @@ npm test                     # editor and preview tests
 cd src-tauri && cargo test   # encoder and font tests
 ```
 
-Installers land in `badge-studio/src-tauri/target/release/bundle/`. Builds are
+Installers land in `BlinkenBadge/src-tauri/target/release/bundle/`. Builds are
 native only; cross-compiling between platforms is not supported.
 
 ### Cutting a release
@@ -230,7 +230,7 @@ GitHub release. The tag has to match the version in `package.json`,
 `Cargo.toml` and `tauri.conf.json`, or the workflow stops before building.
 
 ```bash
-git tag -a v1.2.3 -m "Badge Studio 1.2.3"
+git tag -a v1.2.3 -m "BlinkenBadge 1.2.3"
 git push origin v1.2.3
 ```
 

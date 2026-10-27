@@ -1,6 +1,6 @@
 name: Checks
 
-# The font tables under badge-studio/src-tauri/src/font/ are generated from the
+# The font tables under BlinkenBadge/src-tauri/src/font/ are generated from the
 # pixel art in fonts/, and each face's Cyrillic and accented Latin are derived
 # from its own Latin. Both are committed, so a normal build never runs the
 # generators, and nothing otherwise stops the two drifting apart: edit a
@@ -88,7 +88,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: badge-studio/src-tauri
+          workspaces: BlinkenBadge/src-tauri
 
       # webkit2gtk 4.1 is the Tauri v2 webview, and libudev is what hidapi's
       # hidraw backend needs. `cargo test` links the whole library, so the
@@ -114,7 +114,7 @@ jobs:
             librsvg2-dev libudev-dev
 
       - name: Test
-        working-directory: badge-studio/src-tauri
+        working-directory: BlinkenBadge/src-tauri
         run: cargo test
 
 
@@ -127,27 +127,27 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: badge-studio/package-lock.json
+          cache-dependency-path: BlinkenBadge/package-lock.json
 
       - name: Install dependencies
-        working-directory: badge-studio
+        working-directory: BlinkenBadge
         run: npm ci
 
       - name: Typecheck
-        working-directory: badge-studio
+        working-directory: BlinkenBadge
         run: npx tsc --noEmit
 
       - name: Test
-        working-directory: badge-studio
+        working-directory: BlinkenBadge
         run: npm test
 
       # Both targets, because they are different bundles: the alias in
       # vite.config.ts swaps the platform implementation, so a change that
       # compiles for the desktop can still break the browser build.
       - name: Build (desktop)
-        working-directory: badge-studio
+        working-directory: BlinkenBadge
         run: npx vite build
 
       - name: Build (web)
-        working-directory: badge-studio
+        working-directory: BlinkenBadge
         run: npm run build:web

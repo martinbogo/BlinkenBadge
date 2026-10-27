@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Badge Studio Web</title>
+<title>BlinkenBadge Web</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>%F0%9F%93%9F</text></svg>">
 <style>
   :root {
@@ -52,7 +52,7 @@
 </style>
 
 <main>
-  <h1>Badge Studio Web</h1>
+  <h1>BlinkenBadge Web</h1>
   <p class="sub">Programs a 44x11 LED name badge straight from the browser, over USB (WebHID) or Bluetooth (Web Bluetooth). Same glyphs and same wire format as the desktop app.</p>
 
   <div class="card" id="unsupported">
@@ -113,7 +113,7 @@
 "use strict";
 
 // ---------------------------------------------------------------------------
-// Wire format. Mirrors badge-studio/src-tauri/src/protocol.rs; see PROTOCOL.md.
+// Wire format. Mirrors BlinkenBadge/src-tauri/src/protocol.rs; see PROTOCOL.md.
 // ---------------------------------------------------------------------------
 const ROWS = 11, FIELD = 16, BADGE_W = 44, MAX_MSGS = 8;
 const DEVICE_BUFFER = 8192, HEADER = 64;

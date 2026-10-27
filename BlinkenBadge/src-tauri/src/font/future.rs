@@ -6,7 +6,7 @@ use super::{Face, Glyph};
 pub static FUTURE: Face = Face {
     id: "future",
     name: "Futuristic",
-    notice: "Original pixel art for Badge Studio.",
+    notice: "Original pixel art for BlinkenBadge.",
     jitter: &[],
     pickable: true,
     glyphs: GLYPHS,

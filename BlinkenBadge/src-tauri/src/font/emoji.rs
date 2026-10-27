@@ -6,7 +6,7 @@ use super::{Face, Glyph};
 pub static EMOJI: Face = Face {
     id: "emoji",
     name: "Emoji",
-    notice: "Original pixel art for Badge Studio.",
+    notice: "Original pixel art for BlinkenBadge.",
     jitter: &[],
     pickable: false,
     glyphs: GLYPHS,

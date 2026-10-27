@@ -48,9 +48,9 @@ pub struct Recovery {
 
 fn describe(kind: &str) -> (&'static str, Vec<&'static str>) {
     if kind == "message" {
-        ("Badge Studio message", vec![MESSAGE_EXT])
+        ("BlinkenBadge message", vec![MESSAGE_EXT])
     } else {
-        ("Badge Studio project", vec![PROJECT_EXT])
+        ("BlinkenBadge project", vec![PROJECT_EXT])
     }
 }
 

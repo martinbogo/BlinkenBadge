@@ -15,7 +15,7 @@
 
 id: cartoon
 name: Cartoon
-notice: Original pixel art for Badge Studio.
+notice: Original pixel art for BlinkenBadge.
 jitter: [0, -1, 0, 0, -1, 0, -1, 0, 0, -1, 0]
 
 :U+0020

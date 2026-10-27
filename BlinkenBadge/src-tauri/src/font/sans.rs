@@ -6,7 +6,7 @@ use super::{Face, Glyph};
 pub static SANS: Face = Face {
     id: "sans",
     name: "Sans",
-    notice: "Original pixel art for Badge Studio.",
+    notice: "Original pixel art for BlinkenBadge.",
     jitter: &[],
     pickable: true,
     glyphs: GLYPHS,
