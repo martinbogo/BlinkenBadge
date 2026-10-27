@@ -23,11 +23,17 @@
 //! Faces are generated from the pixel art in `fonts/*.face` by
 //! `fonts/build.py`. Edit the art, not the tables.
 
+mod arcade;
 mod cartoon;
+mod comic;
 mod emoji;
 mod future;
+mod outline;
 mod sans;
 mod serif;
+mod stencil;
+mod terminal;
+mod tiny;
 
 /// Rows per glyph, which is the badge's height.
 pub const GLYPH_ROWS: usize = 11;
@@ -77,6 +83,12 @@ pub static FACES: &[&Face] = &[
     &sans::SANS,
     &cartoon::CARTOON,
     &future::FUTURE,
+    &comic::COMIC,
+    &arcade::ARCADE,
+    &terminal::TERMINAL,
+    &stencil::STENCIL,
+    &outline::OUTLINE,
+    &tiny::TINY,
     &emoji::EMOJI,
 ];
 
@@ -93,7 +105,8 @@ pub fn face(id: &str) -> Option<&'static Face> {
 /// pictograph, and rendering them as '?' turns one heart into two glyphs, one
 /// of which is a question mark.
 fn is_ignorable(c: char) -> bool {
-    matches!(c,
+    matches!(
+        c,
         '\u{200D}'                  // zero-width joiner
         | '\u{FE0E}' | '\u{FE0F}'   // text and emoji variation selectors
         | '\u{1F3FB}'..='\u{1F3FF}' // skin tone modifiers
@@ -166,12 +179,16 @@ pub fn layout(chosen: &'static Face, text: &str) -> Layout {
         // Keyed on position in the string rather than on the character, or
         // every 'l' in "hello" would bounce to the same height and the effect
         // would read as a typesetting fault instead of as handwriting.
-        let dy = if drawn.jitter.is_empty() {
+        let requested_dy = if drawn.jitter.is_empty() {
             0
         } else {
             drawn.jitter[i % drawn.jitter.len()] as isize
         };
 
+        // Keep accents and descenders inside the physical display when bouncing.
+        let top = glyph.rows.iter().position(|r| *r != 0).unwrap_or(0) as isize;
+        let bottom = glyph.rows.iter().rposition(|r| *r != 0).unwrap_or(0) as isize;
+        let dy = requested_dy.clamp(-top, GLYPH_ROWS as isize - 1 - bottom);
         for r in 0..GLYPH_ROWS {
             let y = r as isize + dy;
             if y < 0 || y >= GLYPH_ROWS as isize {
@@ -230,12 +247,69 @@ mod tests {
     }
 
     #[test]
+    fn ten_selectable_faces_have_distinct_designs() {
+        let pick: Vec<_> = FACES.iter().filter(|f| f.pickable).collect();
+        assert_eq!(pick.len(), 10);
+        for (i, a) in pick.iter().enumerate() {
+            assert_eq!(a.glyphs.len(), 283, "{} lost alphabet coverage", a.id);
+            for b in &pick[i + 1..] {
+                assert_ne!(
+                    layout(a, "Abc Hello 0123!?").rows,
+                    layout(b, "Abc Hello 0123!?").rows,
+                    "{} and {} render identically",
+                    a.id,
+                    b.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn handwriting_offsets_preserve_accent_ink() {
+        for id in ["cartoon", "comic"] {
+            let f = face(id).unwrap();
+            let ink = f
+                .glyph('É')
+                .unwrap()
+                .rows
+                .iter()
+                .map(|r| r.count_ones())
+                .sum::<u32>();
+            for position in 0..12 {
+                let value = format!("{}É", " ".repeat(position));
+                let lit = layout(f, &value)
+                    .rows
+                    .iter()
+                    .flatten()
+                    .filter(|p| **p)
+                    .count();
+                assert_eq!(
+                    lit, ink as usize,
+                    "{id} clips an accent at position {position}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn terminal_is_monospaced_and_tiny_is_compact() {
+        assert_eq!(
+            measure(face("terminal").unwrap(), "iiii"),
+            measure(face("terminal").unwrap(), "MMMM")
+        );
+        assert!(measure(face("tiny").unwrap(), "Hello") < measure(face("sans").unwrap(), "Hello"));
+    }
+
+    #[test]
     fn renders_known_glyphs() {
         let l = layout(serif(), "HI");
         assert_eq!(l.width, 16);
         assert!(l.missing.is_empty());
         // 'H' row 5 is the crossbar: 7 lit pixels then the spacing column.
-        let ink: String = l.rows[5][..8].iter().map(|p| if *p { '#' } else { '.' }).collect();
+        let ink: String = l.rows[5][..8]
+            .iter()
+            .map(|p| if *p { '#' } else { '.' })
+            .collect();
         assert_eq!(ink, "#######.");
     }
 
@@ -269,7 +343,10 @@ mod tests {
         // A heart pasted from a phone arrives as the pictograph plus U+FE0F.
         assert_eq!(measure(f, "\u{2764}\u{FE0F}"), measure(f, "\u{2764}"));
         let l = layout(f, "\u{2764}\u{FE0F}");
-        assert!(l.missing.is_empty(), "the selector must not read as unknown");
+        assert!(
+            l.missing.is_empty(),
+            "the selector must not read as unknown"
+        );
     }
 
     #[test]
@@ -277,7 +354,11 @@ mod tests {
         for f in FACES.iter().filter(|f| f.pickable) {
             let l = layout(f, "\u{2764}");
             assert!(l.missing.is_empty(), "{} could not borrow the heart", f.id);
-            assert!(l.rows.iter().any(|r| r.iter().any(|p| *p)), "{} drew nothing", f.id);
+            assert!(
+                l.rows.iter().any(|r| r.iter().any(|p| *p)),
+                "{} drew nothing",
+                f.id
+            );
         }
     }
 
@@ -350,5 +431,4 @@ mod tests {
             }
         }
     }
-
 }

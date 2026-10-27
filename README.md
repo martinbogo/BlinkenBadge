@@ -95,10 +95,18 @@ Text tools stamp 11 px bitmap typefaces directly onto the canvas:
 | Sans | Narrow proportional face |
 | Cartoon | Rounded display face |
 | Futuristic | Bold segmented face |
+| Comic | Loose round handwriting |
+| Arcade | Wide block capitals |
+| Terminal | Monospaced cells with a slashed zero |
+| Stencil | Industrial lettering with counter bridges |
+| Outline | Hollow edge lettering |
+| Tiny | Compact 3x5 small capitals |
 
 All typefaces cover basic Latin, Cyrillic, accented Latin, and 42 custom 11 px emoji glyphs. Typefaces can be mixed within a single bitmap.
 
-Source artwork is defined in `fonts/*.face`. `fonts/build.py` compiles the Rust font tables and `web/fonts.json`. `fonts/derive.py` generates Cyrillic and accented glyphs from base glyphs.
+![Pixel Typeface Samples](docs/typefaces.png)
+
+Source artwork is defined in `fonts/*.face`. `fonts/build.py` compiles the Rust font tables and `web/fonts.json`. `fonts/derive.py` generates Cyrillic and accented glyphs from base glyphs. `python3 fonts/specimen.py` regenerates the sample sheet without external dependencies.
 
 ## Connecting the Badge
 

@@ -69,7 +69,7 @@ export PATH="/Users/martin/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$P
 
 ## Mobile Development
 
-See `docs/mobile.md` for feature parity, test builds, platform differences, and acceptance checks. Preserve eight slots with up to eight animation frames per slot, onion skin, all pixel fonts, selection tools, and full-sequence preview when changing mobile layouts.
+See `docs/mobile.md` for feature parity, test builds, platform differences, and acceptance checks. Preserve eight slots with up to eight animation frames per slot, onion skin, all ten pixel fonts, selection tools, and full-sequence preview when changing mobile layouts.
 
 ## Hardware and Protocol Specifications
 

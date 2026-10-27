@@ -42,6 +42,9 @@ vi.mock("../font", async (original) => ({
     { id: "sans", name: "Sans", notice: "" },
     { id: "cartoon", name: "Cartoon", notice: "" },
     { id: "future", name: "Futuristic", notice: "" },
+    ...["Comic", "Arcade", "Terminal", "Stencil", "Outline", "Tiny"].map(
+      (name) => ({ id: name.toLowerCase(), name, notice: "" }),
+    ),
   ],
 }));
 import MobileApp from "./MobileApp";
@@ -277,12 +280,23 @@ describe("mobile desktop feature parity", () => {
     ).toBe("true");
     expect(screen.getByRole("heading", { name: "Animation 8" })).toBeTruthy();
   });
-  it("offers all four pixel fonts and renders the selected face", async () => {
+  it("offers all ten pixel fonts and renders the selected face", async () => {
     const user = userEvent.setup();
     await open();
     await user.click(screen.getByRole("button", { name: /Untitled/ }));
     await user.click(screen.getByRole("button", { name: "Serif" }));
-    for (const name of ["Serif", "Sans", "Cartoon", "Futuristic"])
+    for (const name of [
+      "Serif",
+      "Sans",
+      "Cartoon",
+      "Futuristic",
+      "Comic",
+      "Arcade",
+      "Terminal",
+      "Stencil",
+      "Outline",
+      "Tiny",
+    ])
       expect(screen.getByRole("button", { name })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Futuristic" }));
     await user.type(screen.getByRole("textbox", { name: "Message" }), "ABC");
