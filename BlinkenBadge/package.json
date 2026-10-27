@@ -29,7 +29,7 @@
     "@vitejs/plugin-react": "^6.0.5",
     "typescript": "^7.0.2",
     "vite": "^8.2.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.12"
   },
   "description": "Animation editor for 44x11 monochrome LED name badges (WCH CH582)",
   "license": "Apache-2.0",
