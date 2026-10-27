@@ -15,7 +15,7 @@ export default function FontChoice({
   useEffect(() => {
     let live = true;
     void platform
-      .renderText("Abc 123", face.id)
+      .renderText("Badge", face.id)
       .then((bitmap) => {
         if (live) setRows(bitmap.rows);
       })

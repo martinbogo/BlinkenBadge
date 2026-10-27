@@ -13,7 +13,7 @@ Native test builds use the shared Rust encoder, project format, pixel fonts, dra
 | Copy previous frame | Frame Options > Copy Previous | Shared frame cloning |
 | All-slot and individual-slot playback | Preview > Playback | Scrub test reaches slot 8, frame 8 |
 | Playback speed, effects, all nine modes | Motion | Shared playback simulation and encoder |
-| Ten pixel fonts, including Comic, Arcade, Terminal, Stencil, Outline, and Tiny | Text > Font; Canvas > Insert > Stamp Text | Ten-face picker and coverage tests |
+| Twelve pixel fonts, including Comic, Punk, and Script | Text > Font; Canvas > Insert > Stamp Text | Twelve-face picker and coverage tests |
 | Multiple fonts within one bitmap or frame | Insert > Stamp Text; choose a font for each stamp | Mixed-font stamping test preserves existing pixels |
 | Pixel pictographs | Text > Pictographs; Stamp Text > Pictographs | Shared shipped glyph palette |
 | Pencil, eraser, line, rectangle, ellipse, fill | Drawing Tool | Shared geometry; gesture tests |

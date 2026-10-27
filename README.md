@@ -101,6 +101,8 @@ Text tools stamp 11 px bitmap typefaces directly onto the canvas:
 | Stencil | Industrial lettering with counter bridges |
 | Outline | Hollow edge lettering |
 | Tiny | Compact 3x5 small capitals |
+| Punk | Jagged slanted horror capitals |
+| Script | Looped cursive with joining strokes |
 
 All typefaces cover basic Latin, Cyrillic, accented Latin, and 42 custom 11 px emoji glyphs. Typefaces can be mixed within a single bitmap.
 

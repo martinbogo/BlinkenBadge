@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fontMetrics, layout } from "./webfont";
 
 describe("shipped pixel fonts", () => {
-  it("exposes ten selectable faces with the same alphabet coverage", () => {
+  it("exposes twelve selectable faces with the same alphabet coverage", () => {
     const faces = fontMetrics().filter((f) => f.pickable);
     expect(faces.map((f) => f.name)).toEqual([
       "Serif",
@@ -15,6 +15,8 @@ describe("shipped pixel fonts", () => {
       "Stencil",
       "Outline",
       "Tiny",
+      "Punk",
+      "Script",
     ]);
     const base = faces[0].advances.map(([c]) => c).sort();
     for (const face of faces) {
@@ -28,7 +30,7 @@ describe("shipped pixel fonts", () => {
     const bitmaps = fontMetrics()
       .filter((f) => f.pickable)
       .map((f) => JSON.stringify(layout("Abc Hello 0123!?", f.id).rows));
-    expect(new Set(bitmaps).size).toBe(10);
+    expect(new Set(bitmaps).size).toBe(12);
   });
   it("preserves accent ink at every handwriting offset", () => {
     for (const id of ["cartoon", "comic"]) {
@@ -46,4 +48,13 @@ describe("shipped pixel fonts", () => {
       layout("Hello", "sans").width,
     );
   });
+});
+
+it("joins Script letters at the baseline without changing measured widths", () => {
+  const advance = fontMetrics()
+    .find((f) => f.id === "script")!
+    .advances.find(([c]) => c === "a")![1];
+  const result = layout("aa", "script");
+  expect(result.width).toBe(advance * 2);
+  expect(result.rows[7][advance]).toBe(true);
 });
