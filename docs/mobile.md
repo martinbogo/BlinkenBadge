@@ -8,8 +8,8 @@ Native test builds use the shared Rust encoder, project format, pixel fonts, dra
 |---|---|---|
 | Eight slots, eight animation frames per slot | Add > Animation; each slot has its own frame strip | 64-frame export and send tests |
 | Slot name, order, enable, duplicate, delete | Slot Options | Shared project model; Undo restores edits |
-| Frame add, duplicate, delete, reorder | Frame strip; Frame Options | Editing flow test |
-| Previous-frame onion skin | Frame Options > Onion Skin | Overlay and toggle tests; overlay is excluded from saved pixels |
+| Frame add, duplicate, delete, reorder | Copy and Blank buttons; Frame Options | Editing flow and undo tests |
+| Previous-frame onion skin | Onion button; Frame Options > Onion Skin | Overlay and toggle tests; overlay is excluded from saved pixels |
 | Copy previous frame | Frame Options > Copy Previous | Shared frame cloning |
 | All-slot and individual-slot playback | Preview > Playback | Scrub test reaches slot 8, frame 8 |
 | Playback speed, effects, all nine modes | Motion | Shared playback simulation and encoder |
@@ -27,11 +27,15 @@ Native test builds use the shared Rust encoder, project format, pixel fonts, dra
 | Whole-project and single-slot files | Project Options; Slot Options > Export Slot | Shared `.badge` and `.badgemsg` codecs |
 | Brightness, enabled-slot upload, capacity | Send | Shared encoder; 64-frame transport specification test |
 
-Empty previews show all 484 unlit LEDs. The drawing screen keeps a full badge monitor visible above the canvas in portrait and beside it in landscape.
+Empty previews and the canvas show unlit pixels. The drawing screen keeps a full badge monitor visible above the canvas in portrait and beside it in landscape. Focus keeps a smaller full badge monitor while hiding the slot header and filmstrip.
+
+The canvas starts at Fit with all 44 display columns visible. Fit, 2×, and 4× are direct controls; pinch zoom stays anchored beneath the fingers. Two fingers pan without drawing. Zoom and pan remain in place when switching frames or entering Focus. A magnifier shows the target pixel beside the finger while drawing.
+
+Play animates the editing canvas and monitor together. Pause selects the visible animation frame for editing. Drawing is disabled during playback; zoom and pan still work. The filmstrip follows the playing frame, and tapping a thumbnail pauses on that frame. Focus provides Previous and Next buttons; Frame Options retains duplication, blank frames, deletion, reordering, and Copy Previous.
 
 The desktop model calls a slot a `Message`. A slot may contain text, a drawing, or an animation. Mobile retains this model; it does not flatten an animation into separate message slots.
 
-Mobile selection and ordering use touch controls in place of desktop modifier-key gestures. Drawing commits one undo entry on pointer release. A pinch or canceled stroke never commits pixels.
+Mobile selection and ordering use touch controls in place of desktop modifier-key gestures. Draw uses one finger: tap to toggle a pixel, start on a dark pixel to draw a stroke, or start on a lit pixel to erase a stroke. The Erase tool always clears pixels, including strokes that start on empty space. A stroke keeps its starting ink while crossing or revisiting pixels. Drawing commits one undo entry on pointer release. A pinch or canceled stroke never commits pixels.
 
 ## Platform Differences
 
@@ -85,7 +89,9 @@ CI builds an Android ARM64 debug APK and an unsigned iOS ARM64 archive without s
 4. Duplicate, reorder, delete, and undo frames and slots.
 5. Stamp different fonts into separate areas of one frame.
 6. Copy a selection between frames and between slots.
-7. Rotate the device while editing and while previewing the full sequence.
-8. Export the project, relaunch, and import the exported copy.
-9. Transfer a short project to the physical badge on each phone.
-10. Transfer the 64-frame project and verify slot order, frame order, speed, and brightness.
+7. Try Fit, 2×, 4×, pinch, pan, and Focus; switch frames without losing the viewport.
+8. Play in the canvas, then pause and edit the visible frame.
+9. Rotate the device while editing and while previewing the full sequence.
+10. Export the project, relaunch, and import the exported copy.
+11. Transfer a short project to the physical badge on each phone.
+12. Transfer the 64-frame project and verify slot order, frame order, speed, and brightness.
