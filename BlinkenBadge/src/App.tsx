@@ -104,6 +104,8 @@ export default function App() {
   const [project, setProject] = useState<Project>(blank);
   // Which badge you physically own, not a property of the document. Loading
   // someone else's project must not change the colour of your hardware.
+  const isCapture = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("capture");
+
   const [led, setLed] = useState<LedColor>(
     () => (localStorage.getItem("badge-led") as LedColor) || "red"
   );
@@ -807,6 +809,30 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Demo capture loader for docs screenshots (?demo=editor / ?demo=animation)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const demo = params.get("demo");
+    if (demo === "editor" || demo === "animation") {
+      fetch("/demo.badge")
+        .then((r) => r.text())
+        .then((text) => {
+          const p = parseProject(text);
+          adopt(p, "demo.badge");
+          setLed("orange");
+          if (demo === "animation") {
+            setActiveId(p.messages[2].id);
+            setOnion(true);
+            setPlaying(false);
+          } else {
+            setActiveId(p.messages[0].id);
+            setPlaying(false);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [adopt]);
+
   // Files opened from the OS while already running: double-click, "Open With",
   // or dropping onto the dock icon.
   useEffect(() => {
@@ -960,13 +986,49 @@ export default function App() {
 
   return (
     <div className="app">
+      {isCapture && (
+        <div
+          style={{
+            height: "28px",
+            background: "#0b0d12",
+            borderBottom: "1px solid #1a1e27",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 14px",
+            position: "relative",
+            userSelect: "none",
+            flex: "none",
+          }}
+        >
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#ff5f57", border: "1px solid #e0443e" }} />
+            <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#febc2e", border: "1px solid #d89e24" }} />
+            <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: "#28c840", border: "1px solid #1aab29" }} />
+          </div>
+          <div
+            style={{
+              position: "absolute",
+              left: "85px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              color: "#9c9d9f",
+              fontSize: "13px",
+              fontWeight: 500,
+              fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+            }}
+          >
+            <span>demo - BlinkenBadge</span>
+          </div>
+        </div>
+      )}
       <header className="topbar">
         <div className="brand">
           <span className="dot" />
           BlinkenBadge
         </div>
         {/* The desktop has the operating system's menu; the browser has none. */}
-        {platform.kind === "web" && <WebMenuBar />}
+        {platform.kind === "web" && !isCapture && <WebMenuBar />}
         <div className="topbar-controls">
           <label title="Your badge's LED colour. Rendering only, never sent to the badge.">
             <span
