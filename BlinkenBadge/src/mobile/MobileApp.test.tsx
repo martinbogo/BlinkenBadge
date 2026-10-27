@@ -385,6 +385,84 @@ describe("mobile desktop feature parity", () => {
       await screen.findByRole("button", { name: /Animation 1.*Slot 1/ }),
     ).toBeTruthy();
   });
+  it("deletes the chosen slot from its root menu and restores it with Undo", async () => {
+    const user = userEvent.setup();
+    const project = await restore();
+    expect(screen.getByRole("heading", { name: "Badge Slots" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Slot 2 Options" }));
+    expect(
+      (screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement).value,
+    ).toBe("Animation 2");
+    await user.click(screen.getByRole("button", { name: "Delete Slot" }));
+    expect(screen.getByText(/Delete “Animation 2” from Slot 2/)).toBeTruthy();
+    // Dismissing confirmation leaves all frames untouched.
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }),
+    );
+    expect(
+      screen.getByRole("button", { name: /Animation 2.*Slot 2/ }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Slot 2 Options" }));
+    await user.click(screen.getByRole("button", { name: "Delete Slot" }));
+    await user.click(screen.getByRole("button", { name: "Delete Slot" }));
+    expect(
+      screen.queryByRole("button", { name: /Animation 2.*Slot/ }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Animation 3.*Slot 2/ }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Project Options" }));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await user.click(screen.getByRole("button", { name: "Export Project" }));
+    expect(
+      parseProject(host.exportDocument.mock.calls[0][0] as string),
+    ).toEqual(project);
+  });
+  it("lets the last creation be deleted without breaking the one-slot document model", async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.click(screen.getByRole("button", { name: /Untitled/ }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Message" }),
+      "KEEP ME",
+    );
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Done" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    await user.click(screen.getByRole("button", { name: "Slot 1 Options" }));
+    await user.click(screen.getByRole("button", { name: "Delete Slot" }));
+    expect(screen.getByText(/A blank slot will take its place/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Delete Slot" }));
+    expect(screen.queryByRole("button", { name: /KEEP ME/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Untitled/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Project Options" }));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }),
+    );
+    expect(screen.getByRole("button", { name: /KEEP ME/ })).toBeTruthy();
+  });
+  it("returns pixel conversion from a root slot menu to the slot list", async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.click(screen.getByRole("button", { name: "Slot 1 Options" }));
+    await user.click(screen.getByRole("button", { name: "Edit Pixels" }));
+    await user.click(screen.getByRole("button", { name: "Edit Pixels" }));
+    expect(
+      screen.getByRole("region", { name: "Drawing Workspace" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Back to Slots" }));
+    expect(
+      await screen.findByRole("heading", { name: "Badge Slots" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Untitled Drawing/ }),
+    ).toBeTruthy();
+  });
   it("offers all twelve pixel fonts and renders the selected face", async () => {
     const user = userEvent.setup();
     await open();

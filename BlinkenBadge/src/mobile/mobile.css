@@ -65,6 +65,10 @@ html.mobile-layout #root {
   line-height: 1.25;
   white-space: normal;
 }
+.mobile-app .mobile-danger {
+  color: #ffaaaa;
+  border-color: #99545e;
+}
 .mobile-app button:disabled {
   opacity: 0.4;
   cursor: default;
@@ -145,6 +149,19 @@ html.mobile-layout #root {
   flex-direction: column;
   gap: 16px;
 }
+.mobile-slot-card {
+  position: relative;
+  flex: none;
+  min-width: 0;
+}
+.mobile-app .mobile-slot-menu {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 48px;
+  padding: 8px;
+  color: var(--mobile-accent);
+}
 .mobile-app .mobile-message-card {
   display: block;
   flex: none;
@@ -157,9 +174,10 @@ html.mobile-layout #root {
 }
 .mobile-message-card > div {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  padding-right: 44px;
 }
 .mobile-message-card strong {
   font-size: 16px;
