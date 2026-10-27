@@ -32,7 +32,7 @@ import type {
 } from "./types";
 
 /** Tauri's unlisten is a promise; the editor wants a plain unsubscribe. */
-const sub = <T,>(name: string, cb: (payload: T) => void) => {
+const sub = <T>(name: string, cb: (payload: T) => void) => {
   const un = listen<T>(name, (e) => cb(e.payload));
   return () => {
     void un.then((f) => f());
@@ -62,6 +62,9 @@ export const platform: Platform = {
   writeText: (path, contents, kind) =>
     invoke<void>("write_text", { path, contents, kind }),
   pickImage: () => invoke<string | null>("pick_image"),
+  importDocument: (kind) => invoke<string | null>("mobile_import", { kind }),
+  exportDocument: (json, kind) =>
+    invoke<boolean>("mobile_export", { json, kind }),
   takePendingFiles: () => invoke<string[]>("take_pending_files"),
 
   recentClear: () => invoke<void>("recent_clear"),
@@ -71,7 +74,9 @@ export const platform: Platform = {
   recoveryClear: () => invoke<void>("recovery_clear"),
 
   setTitle: (title) => {
-    void getCurrentWindow().setTitle(title).catch(() => {});
+    void getCurrentWindow()
+      .setTitle(title)
+      .catch(() => {});
   },
   confirmExit: () => invoke<void>("confirm_exit"),
   onMenu: (cb) => sub<string>("menu", cb),

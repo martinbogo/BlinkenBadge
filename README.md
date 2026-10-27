@@ -55,6 +55,12 @@ Supported on Android via Chrome (Web Bluetooth only). Not supported on iOS due t
 
 See [web/README.md](web/README.md) for implementation details.
 
+## Mobile Development
+
+Native iOS and Android test builds use a separate touch interface and the shared editor, fonts, project files, playback simulation, and badge encoder. Slots may contain text, drawings, or up to eight animation frames each. The eight-slot project supports up to 64 animation frames.
+
+See [mobile development](docs/mobile.md) for the desktop-to-mobile feature map, build commands, compatibility targets, and device acceptance tests. Mobile packages are not included in the desktop release workflow.
+
 ## Message Slots
 
 The badge holds 8 message slots. Each slot stores 1 static bitmap or an animation of up to 8 frames. An upload contains up to 64 frames total across all 8 slots. The badge cycles enabled slots sequentially.
@@ -285,7 +291,7 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 CI runs these checks on pushes, pull requests, releases, and a daily schedule. CodeQL scans JavaScript and TypeScript. Dependabot checks npm, Cargo, and Actions updates weekly.
 
-The GTK `proc-macro-error` maintenance advisory has one documented exception in `BlinkenBadge/src-tauri/deny.toml`. CI requires review before January 27, 2027. Vulnerability and unsoundness advisories remain enforced.
+The GTK `proc-macro-error` maintenance advisory has one documented exception in `BlinkenBadge/src-tauri/deny.toml`. CI requires review before January 27, 2027. Vulnerability advisories remain enforced. The scanner defaults to workspace-only unsoundness checks; the upstream Linux GTK `glib` unsoundness alert still needs resolution before claiming that all dependency alerts are cleared.
 
 Desktop file commands accept only document paths authorized by native pickers, file-open events, recents, or recovery. Document and image imports are limited to 8 MiB and 16 MiB respectively. Saves use atomic replacement.
 

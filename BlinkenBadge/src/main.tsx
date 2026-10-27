@@ -12,12 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App";
+import { mobileHost } from "./mobile/host";
+
+const DesktopApp = lazy(() => import("./App"));
+const MobileApp = lazy(() => import("./mobile/MobileApp"));
+const App = mobileHost ? MobileApp : DesktopApp;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <Suspense fallback={<p role="status">Opening BlinkenBadge...</p>}>
+      <App />
+    </Suspense>
   </React.StrictMode>,
 );
