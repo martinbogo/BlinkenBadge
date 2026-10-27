@@ -81,7 +81,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: BlinkenBadge/src-tauri
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
       # webkit2gtk 4.1 is the Tauri v2 webview. libudev is needed by hidapi's
       # hidraw backend, which is how the badge is reached over USB.
@@ -98,12 +98,16 @@ jobs:
         working-directory: BlinkenBadge
         run: npm ci
 
-      - name: Build unsigned installers
+      - name: Compile without signing credentials
+        working-directory: BlinkenBadge
+        run: npm run tauri -- build --no-bundle -- --locked
+
+      - name: Bundle unsigned installers
         if: runner.os != 'macOS' || github.repository != 'martinbogo/BlinkenBadge' || (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v'))
         working-directory: BlinkenBadge
-        run: npm run tauri -- build -- --locked
+        run: npm run tauri -- bundle --no-sign
 
-      - name: Build and notarize macOS installers
+      - name: Sign and notarize macOS installers
         if: runner.os == 'macOS' && github.repository == 'martinbogo/BlinkenBadge' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         working-directory: BlinkenBadge
         env:
@@ -120,7 +124,7 @@ jobs:
               exit 1
             fi
           done
-          npm run tauri -- build -- --locked
+          npm run tauri -- bundle
 
       - name: Verify macOS signature and notarization
         if: runner.os == 'macOS' && github.repository == 'martinbogo/BlinkenBadge' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
