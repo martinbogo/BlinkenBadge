@@ -1,127 +1,83 @@
-# BlinkenBadge in the browser
+# BlinkenBadge Web Client
 
-The same editor as the desktop app, built for the web. Drawing tools, the
-timeline, message slots, documents and both transports, with nothing installed.
+Browser build of BlinkenBadge using WebHID and Web Bluetooth.
 
-It is the only way to use BlinkenBadge on Android. It cannot run on iOS, where
-Safari implements neither WebHID nor Web Bluetooth on any platform.
+Provides the same editor, drawing tools, timeline, slot management, and device transports as the desktop application. Runs in Chromium-based browsers without native installation.
 
-## Building and running
+## Platform Support
 
-```bash
-cd BlinkenBadge
-npm run dev:web             # http://localhost:5180
-npm run build:web           # -> BlinkenBadge/dist-web/
-```
-
-`localhost` counts as a secure context, so the badge works in `dev:web` without
-TLS.
-
-## Deploying
-
-Upload the contents of `BlinkenBadge/dist-web/` to any static host:
-
-```bash
-npm run build:web
-scp -r BlinkenBadge/dist-web/* you@example.com:/var/www/html/badge/
-```
-
-**HTTPS is mandatory.** WebHID and Web Bluetooth are gated on a secure context.
-Served over plain HTTP the page loads and then offers neither, which looks like
-a broken app rather than a missing certificate.
-
-No server code, no CORS headers, no MIME configuration.
-
-## Browser support
-
-| | USB (WebHID) | Bluetooth |
+| Browser / OS | USB (WebHID) | Bluetooth LE (Web Bluetooth) |
 |---|---|---|
-| Chrome, Edge, Opera (desktop) | yes | yes |
-| Chrome (Android) | no | yes |
-| Firefox | no | no |
-| Safari, iOS, iPadOS | no | no |
+| Chromium (macOS, Windows, Linux) | Supported | Supported |
+| Chrome (Android) | Not supported | Supported |
+| Firefox | Not supported | Not supported |
+| Safari (macOS, iOS, iPadOS) | Not supported | Not supported |
 
-Mobile Chromium compiles WebHID out, so `navigator.hid` is `undefined` on
-Android rather than throwing.
+Mobile Chromium omits WebHID; `navigator.hid` is `undefined` on Android.
 
-## How the two builds share one editor
+## Development and Build
 
-Only a handful of things genuinely differ between a desktop app and a web page.
-Those live behind `src/platform/`, and everything above that line, which is
-most of the program, is the same code in both builds.
+### Running Locally
 
-```
-src/platform/
-  types.ts     the interface
-  tauri.ts     desktop: Rust commands and window events
-  web.ts       browser: WebHID, Web Bluetooth, File System Access, IndexedDB
-  wire.ts      the "wang" encoder, in TypeScript
-  webfont.ts   the glyph renderer, a port of font/mod.rs
-  index.ts     picks one, at build time
-```
+1. Change directory:
+   ```bash
+   cd BlinkenBadge
+   ```
+2. Start the development server:
+   ```bash
+   npm run dev:web
+   ```
+3. Open `http://localhost:5180` in Chrome or Edge. `localhost` is treated as a secure context.
 
-`vite.config.ts` aliases `@platform-impl` to one implementation or the other, so
-the unused half is never bundled: the desktop build carries no glyph table and
-the web build carries no Tauri client.
+### Building Static Assets
 
-Editor code imports from `./platform` and never from either implementation. If
-you find yourself reaching for `invoke` in a component, add a method to the
-interface instead and implement it on both sides.
+1. Compile the production bundle:
+   ```bash
+   npm run build:web
+   ```
+2. Deploy the contents of `BlinkenBadge/dist-web/` to an HTTPS server:
+   ```bash
+   scp -r BlinkenBadge/dist-web/* user@host:/var/www/html/badge/
+   ```
 
-## Two implementations of one wire format
+HTTPS is required. WebHID and Web Bluetooth are unavailable in non-secure HTTP contexts.
 
-The encoder now exists twice, in Rust for the desktop and in TypeScript for the
-browser, and both write to hardware. That is a liability, so it is tested rather
-than trusted.
+## Architecture
 
-`src/wire.test.ts` holds the TypeScript encoder to golden vectors printed by
-`protocol.rs` itself: text through the shared glyph table, animation at both
-firmware strides, blink and border bits across two messages, and the brightness
-level. It also asserts the two strides differ, because if they ever stopped
-differing the firmware detection would be doing nothing.
+Platform-specific implementations reside in `src/platform/`:
 
-To regenerate the vectors, add a test to `protocol.rs` that prints `pack(...)`
-as hex with a `Stamp::default()`, run it, and paste the output.
+| File | Target | Responsibilities |
+|---|---|---|
+| `src/platform/types.ts` | Shared | Platform abstraction interface |
+| `src/platform/tauri.ts` | Desktop | Tauri IPC commands, native file dialogs, system menus |
+| `src/platform/web.ts` | Browser | WebHID, Web Bluetooth, File System Access API, IndexedDB |
+| `src/platform/wire.ts` | Browser | TypeScript implementation of the wire protocol encoder |
+| `src/platform/webfont.ts` | Browser | TypeScript bitmap font renderer |
+| `src/platform/index.ts` | Build | Resolves platform implementation via Vite alias `@platform-impl` |
 
-The glyphs are not duplicated at all. `fonts/webfont.py` generates
-`web/fonts.json` from the same `fonts/*.face` pixel art that `build.py` turns
-into the Rust tables, and CI regenerates both and fails on a diff.
+`vite.config.ts` configures `@platform-impl` at build time. The desktop bundle excludes web font tables, and the web bundle excludes Tauri dependencies.
 
-## What the browser cannot do
+### Wire Encoder Validation
 
-Three differences are inherent rather than unfinished:
+The TypeScript encoder in `src/platform/wire.ts` is validated against Rust golden vectors generated by `protocol.rs`:
+- Text encoding across the shared font table
+- Animation strides for stock firmware (48 px) and badgemagic firmware (44 px)
+- Blink and border bitmasks across multiple message slots
+- Brightness levels
 
-- **Device access needs a click.** Chrome will not reveal a device until the
-  user picks it from its own chooser, and that chooser opens only from a user
-  gesture. Hence the `Connect USB` button, and a `Scan` that opens the
-  Bluetooth chooser rather than surveying the air.
-- **There are no file paths.** The File System Access API will not hand one
-  back, so a document is an opaque handle. Save In Place works, but what the
-  title bar shows is a name, not a location.
-- **Double-clicking a `.badge` file does not open it.** That needs the File
-  Handling API, which means an installed PWA.
+Test file: `src/wire.test.ts`. Run with `npm test`.
 
-Everything else has a real equivalent: the autosave and crash recovery use
-IndexedDB, the menu is an in-page one raising the same action ids, and the
-window title is the document title.
+Bitmap fonts are compiled into `web/fonts.json` from `fonts/*.face` by `fonts/webfont.py`.
 
-## Things that look like bugs and are not
+## Browser Operational Differences
 
-- **The badge is silent over Bluetooth while USB is plugged in.** Unplug it,
-  then press the first button until the Bluetooth icon appears.
-- **It leaves Bluetooth mode after every upload.** Press the button again
-  before each send.
-- **A failed Bluetooth upload cannot be resumed.** Send again from the start.
-- **Delivery is unverifiable.** No checksum, no read-back, nothing comes back
-  on either transport. Bytes accepted by the link is not the same as bytes
-  parsed by the badge. Check the display.
+1. **Device Selection**: WebHID and Web Bluetooth require a user gesture before prompting the device selection dialog. The interface provides **Connect USB** and **Scan** buttons.
+2. **File Paths**: The File System Access API does not expose filesystem paths. The window title displays the file basename.
+3. **File Associations**: Direct launch by double-clicking `.badge` files is not supported in the web browser.
+4. **Crash Recovery**: Unsaved drafts are stored in browser IndexedDB.
 
-## The standalone prototype
+## Hardware Operational Notes
 
-`web/index.html` is a single-file text sender that predates this port. It
-proved WebHID and Web Bluetooth reach the hardware and that the encoder ports
-faithfully, which were the risky unknowns. The full build supersedes it, and it
-is kept only as a minimal fallback.
-
-`web/fonts.json` is not part of that prototype and stays regardless: the real
-build imports it.
+1. **USB Interference**: The badge disables Bluetooth while USB is plugged in. Disconnect the USB cable before initiating Bluetooth connections.
+2. **Bluetooth Latch**: The badge exits Bluetooth mode after each completed upload. Press button 1 on the badge before each upload.
+3. **Transfer Resumption**: Partial Bluetooth transfers cannot be resumed. Restart the upload from the beginning.

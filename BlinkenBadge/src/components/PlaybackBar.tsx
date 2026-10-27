@@ -63,7 +63,7 @@ export default function PlaybackBar({
         className="transport-btn"
         onClick={onRestart}
         disabled={idle}
-        title="Back to the start"
+        title="Rewind to first frame"
         aria-label="Back to the start"
       >
         ⏮
@@ -108,7 +108,7 @@ export default function PlaybackBar({
       {canSequence && (
         <label
           className="check"
-          title="Play every message in order, the way the badge cycles them"
+          title="Cycle all messages sequentially"
         >
           <input
             type="checkbox"

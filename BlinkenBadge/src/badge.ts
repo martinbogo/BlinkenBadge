@@ -15,7 +15,7 @@
 /**
  * Preview simulation of the badge's display modes.
  *
- * The per-mode stepping follows the behaviour of badgemagic-app (Apache-2.0).
+ * The per-mode stepping follows the behavior of badgemagic-app (Apache-2.0).
  * Changed from that implementation: frame timing is recalibrated, because its
  * speed curve runs 2.76x fast on this hardware, and integer division is
  * explicitly truncating rather than flooring, which fixes an off-by-one column
@@ -103,7 +103,7 @@ export interface ClickMods {
 /**
  * The selection after clicking slot `id`, and the anchor to remember.
  *
- * The three behaviours are the ones every list in every file manager has:
+ * The three behaviors are the ones every list in every file manager has:
  * plain click replaces, Cmd/Ctrl toggles one, Shift takes the range from the
  * last anchored click. Kept out of the component so the rules can be tested
  * rather than clicked at.
@@ -429,7 +429,7 @@ function renderMode(m: Message, step: number): Frame {
     }
 
     case "picture": {
-      // Two lit columns start at the centre and travel outward. The bitmap
+      // Two lit columns start at the center and travel outward. The bitmap
       // shows between them on the way out, and outside them coming back.
       const total = BADGE_WIDTH;
       const { isTextTooLong, startColOffset, horizontalOffset } = paging(

@@ -35,7 +35,7 @@ const CELL = 2;
  * Drawn from the font rather than as system emoji on purpose. The set is
  * deliberately small, so the useful question is not "what does this emoji look
  * like" but "is this one of the ones that works, and does it survive at 11px".
- * A colour glyph from the operating system answers neither, and would promise
+ * A color glyph from the operating system answers neither, and would promise
  * detail the hardware cannot show.
  */
 export default function EmojiPalette({ chars, led, onPick }: Props) {

@@ -24,7 +24,7 @@ import {
 import { newMessage } from "./badge";
 import { BADGE_HEIGHT, type Message, type Project } from "./types";
 
-/** A message with a recognisable pattern, so a lost pixel shows up. */
+/** A message with a recognizable pattern, so a lost pixel shows up. */
 function patterned(width = 44): Message {
   const m = newMessage("fixed");
   m.frames = [

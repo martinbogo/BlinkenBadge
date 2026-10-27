@@ -109,7 +109,7 @@ mod tests {
     /// vendor_info and product_info in src/usb/dev.c, and the Device
     /// Information Service in src/ble/profile/devinfo.c.
     #[test]
-    fn recognises_badgemagic_over_usb() {
+    fn recognizes_badgemagic_over_usb() {
         assert_eq!(
             identify([
                 Some("FOSSASIA WAS HERE"),
@@ -121,7 +121,7 @@ mod tests {
     }
 
     #[test]
-    fn recognises_badgemagic_over_ble() {
+    fn recognizes_badgemagic_over_ble() {
         // Manufacturer name and model number characteristics.
         assert_eq!(identify([Some("FOSSASIA")]), Firmware::BadgeMagic);
         assert_eq!(identify([Some("BM1144-C")]), Firmware::BadgeMagic);

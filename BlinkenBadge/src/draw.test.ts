@@ -245,7 +245,7 @@ describe("brush", () => {
     expect(brushOffsets(1)).toEqual([{ x: 0, y: 0 }]);
   });
 
-  it("size 3 is centred", () => {
+  it("size 3 is centered", () => {
     const o = brushOffsets(3);
     expect(o).toHaveLength(9);
     expect(o).toContainEqual({ x: -1, y: -1 });

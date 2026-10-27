@@ -1,7 +1,7 @@
 [package]
 name = "blinkenbadge"
 version = "1.0.30"
-description = "Animation editor for the nyx v1 LED badge"
+description = "Animation editor for 44x11 monochrome LED name badges (WCH CH582)"
 authors = ["Martin Bogomolni"]
 license = "Apache-2.0"
 repository = "https://github.com/martinbogo/blinkenbadge"

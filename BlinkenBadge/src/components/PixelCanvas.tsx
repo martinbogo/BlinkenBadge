@@ -52,7 +52,7 @@ interface Props {
   showViewport?: boolean;
   /** Upper bound on cell size. 11 rows tall gets tall fast at large cells. */
   maxCell?: number;
-  /** Which LED colour the physical badge has. */
+  /** Which LED color the physical badge has. */
   led: LedColor;
 }
 

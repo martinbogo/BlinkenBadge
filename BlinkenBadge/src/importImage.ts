@@ -63,7 +63,7 @@ export async function importImage(
   cv.height = BADGE_HEIGHT;
   const ctx = cv.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Could not get a 2D canvas context.");
-  // Nearest-neighbour keeps pixel art crisp; smoothing turns it to mush at 11px.
+  // Nearest-neighbor keeps pixel art crisp; smoothing turns it to mush at 11px.
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(img, 0, 0, width, BADGE_HEIGHT);
 

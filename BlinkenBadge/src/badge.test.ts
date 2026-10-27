@@ -89,7 +89,7 @@ describe("renderPreview", () => {
     }
   });
 
-  it("centres a narrow bitmap in fixed mode", () => {
+  it("centers a narrow bitmap in fixed mode", () => {
     const v = renderPreview(msg("fixed", [BLOCK]), 0);
     const ox = Math.floor((BADGE_WIDTH - 3) / 2);
     expect(v[3][ox]).toBe(true);
@@ -97,7 +97,7 @@ describe("renderPreview", () => {
     expect(v[3][ox + 3]).toBe(false);
   });
 
-  it("fixed centres using truncating division, as the reference does", () => {
+  it("fixed centers using truncating division, as the reference does", () => {
     // Regression: Dart's `~/` truncates toward zero, Math.floor does not. They
     // differ exactly when (BADGE_WIDTH - width) is negative and odd, which
     // shifted the bitmap a column left and pushed column 0 off-screen.

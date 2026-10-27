@@ -101,7 +101,7 @@ export function rectPoints(a: Point, b: Point, filled: boolean): Point[] {
 /**
  * Ellipse inscribed in the dragged bounding box.
  *
- * Tested by sampling pixel centres rather than a midpoint-tracing algorithm.
+ * Tested by sampling pixel centers rather than a midpoint-tracing algorithm.
  * On an 11px-tall display most ellipses are only a few pixels across, and the
  * incremental algorithms degenerate badly at that size; brute force over the
  * bounding box is both correct and trivially cheap here.
@@ -175,7 +175,7 @@ export function floodFillPoints(frame: Frame, seed: Point): Point[] {
 
 // --- brush ----------------------------------------------------------------
 
-/** Offsets for an n-wide square brush, kept centred for odd sizes. */
+/** Offsets for an n-wide square brush, kept centered for odd sizes. */
 export function brushOffsets(size: number): Point[] {
   const n = Math.max(1, Math.round(size));
   const lo = -Math.floor((n - 1) / 2);

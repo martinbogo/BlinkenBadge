@@ -103,7 +103,7 @@ export default function App() {
   );
   const [project, setProject] = useState<Project>(blank);
   // Which badge you physically own, not a property of the document. Loading
-  // someone else's project must not change the colour of your hardware.
+  // someone else's project must not change the color of your hardware.
   const isCapture = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("capture");
 
   const [led, setLed] = useState<LedColor>(
@@ -1030,7 +1030,7 @@ export default function App() {
         {/* The desktop has the operating system's menu; the browser has none. */}
         {platform.kind === "web" && !isCapture && <WebMenuBar />}
         <div className="topbar-controls">
-          <label title="Your badge's LED colour. Rendering only, never sent to the badge.">
+          <label title="LED color. Preview only; not sent to badge.">
             <span
               className="led-swatch"
               style={{ background: LED_COLORS[led] }}
@@ -1052,13 +1052,13 @@ export default function App() {
               are the two that get used constantly. */}
           <button
             onClick={() => guard("start a new project", newProject)}
-            title="New project (Cmd/Ctrl+N)"
+            title="New Project (Cmd/Ctrl+N)"
           >
             New
           </button>
           <button
             onClick={() => guard("open another project", () => void openProject())}
-            title="Open a project (Cmd/Ctrl+O)"
+            title="Open Project (Cmd/Ctrl+O)"
           >
             Open
           </button>
@@ -1290,7 +1290,7 @@ export default function App() {
                         <button
                           className={showEmoji ? "active" : undefined}
                           onClick={() => setShowEmoji((v) => !v)}
-                          title="The pictographs the badge can draw"
+                          title="Emoji and icon pictographs"
                           aria-expanded={showEmoji}
                         >
                           Emoji
@@ -1300,7 +1300,7 @@ export default function App() {
                         <select
                           value={faceId}
                           onChange={(e) => setFaceId(e.target.value)}
-                          title="Typeface for this stamp. Text becomes pixels once stamped, so one message can mix faces."
+                          title="Typeface for text stamp"
                           aria-label="Typeface"
                         >
                           {faces.map((f) => (
@@ -1325,7 +1325,7 @@ export default function App() {
 
                   {insert === "image" && (
                     <div className="bar-row insert-panel">
-                      <label title="Luminance above this becomes a lit pixel">
+                      <label title="Threshold for lit pixels">
                         Threshold
                         <input
                           type="range"
@@ -1385,7 +1385,7 @@ export default function App() {
                           ),
                         }))
                       }
-                      title={`Erase this frame and return the canvas to ${BADGE_WIDTH}x${BADGE_HEIGHT}`}
+                      title={`Clear frame to ${BADGE_WIDTH}x${BADGE_HEIGHT}`}
                     >
                       Clear
                     </button>
@@ -1415,7 +1415,7 @@ export default function App() {
                         <span className="sep" />
                         <button
                           onClick={copyPreviousFrame}
-                          title="Replace this frame with a copy of the one before it"
+                          title="Copy previous frame"
                         >
                           Copy previous
                         </button>
@@ -1545,7 +1545,7 @@ export default function App() {
 
       {ask?.kind === "recover" && (
         <Modal
-          title="BlinkenBadge closed unexpectedly"
+          title="BlinkenBadge Closed Unexpectedly"
           body={
             <>
               <p>

@@ -19,7 +19,7 @@ import { BADGE_HEIGHT, type Frame, type LedColor } from "../types";
 interface Props {
   frames: Frame[];
   current: number;
-  /** Thumbnails are previews of the badge, so they follow the LED colour. */
+  /** Thumbnails are previews of the badge, so they follow the LED color. */
   led: LedColor;
   onSelect: (i: number) => void;
   onAdd: () => void;

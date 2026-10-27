@@ -54,13 +54,10 @@ function PairingSteps() {
   return (
     <ol className="pairing-steps">
       <li>
-        <strong>Unplug the badge from USB.</strong> It will not advertise over
-        Bluetooth while it is connected.
+        <strong>Disconnect the badge from USB.</strong> The badge disables Bluetooth transmission while USB is connected.
       </li>
       <li>
-        <strong>Press the first button</strong> to enter Bluetooth mode. The
-        badge shows a Bluetooth icon once it is ready. It leaves Bluetooth mode
-        again after every upload.
+        <strong>Press button 1.</strong> The Bluetooth icon appears on the display. The badge exits Bluetooth mode after each upload.
       </li>
     </ol>
   );
@@ -240,10 +237,7 @@ export default function TransportBar({
       setRate(null);
       try {
         const sent = await platform.sendBle(live.map(toSpec), brightness, target);
-        setStatus(
-          `Sent ${sent} bytes. The badge leaves Bluetooth mode after an upload, ` +
-            `so press the first button again before sending anything else.`
-        );
+        setStatus(`Sent ${sent} bytes over Bluetooth.`);
         setShowPairing(true);
         setSelected(null);
       } catch (e) {
@@ -274,7 +268,7 @@ export default function TransportBar({
         <div className="tgroup payload">
           <div
             className="payload-readout"
-            title={`${bytes} bytes of the ${BUDGET_BYTES} the badge reliably accepts.`}
+            title={`${bytes} of ${BUDGET_BYTES} bytes used.`}
           >
             <span className={unproven ? "warn" : "mu"}>
               {bytes} / {BUDGET_BYTES} bytes
@@ -289,7 +283,7 @@ export default function TransportBar({
           {unproven && (
             <span
               className="warn small"
-              title="Uploads this size are unreliable over Bluetooth. Connect the badge over USB."
+              title="Payload exceeds reliable Bluetooth limit. Connect via USB."
             >
               large for Bluetooth
             </span>
@@ -297,7 +291,7 @@ export default function TransportBar({
         </div>
 
         <div className="tgroup">
-          <label title="How brightly the badge lights its LEDs">
+          <label title="Badge display brightness">
             Brightness
             <select
               value={brightness}

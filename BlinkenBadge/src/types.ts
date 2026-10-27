@@ -155,7 +155,7 @@ export const TOOL_KEYS: Record<Tool, string> = {
 export const SHAPE_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["rect", "ellipse"]);
 
 /**
- * LED colours the badge ships in. The badge does not report which one it is,
+ * LED colors the badge ships in. The badge does not report which one it is,
  * so the user picks it and the app renders to match.
  */
 export const LED_COLORS = {

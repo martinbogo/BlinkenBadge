@@ -32,7 +32,7 @@ interface Props {
   step: number;
   brightness: Brightness;
   playing: boolean;
-  /** Which LED colour the physical badge has. */
+  /** Which LED color the physical badge has. */
   led: LedColor;
   /** Upper bound on LED size, so the preview does not grow absurdly wide. */
   maxCell?: number;

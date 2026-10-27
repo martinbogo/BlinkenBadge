@@ -1,266 +1,254 @@
 # BlinkenBadge
 
-Design animations for the nyx v1 LED badge (WCH CH582, 44x11 monochrome
-matrix) and upload them over USB or Bluetooth.
+Editor for 44x11 monochrome LED name badges (WCH CH582). Uploads via USB HID and Bluetooth LE.
 
-Runs on macOS, Windows and Linux, and works with the badge's stock firmware.
-No reflashing is required.
+Compatible with stock firmware and [badgemagic](https://github.com/fossasia/badgemagic-firmware) firmware. No reflashing required. Runs on macOS, Windows, and Linux.
 
-![BlinkenBadge editor](docs/editor.png)
+![BlinkenBadge Editor](docs/editor.png)
 
-![Animation timeline](docs/animation.png)
+![Animation Timeline](docs/animation.png)
 
 ## Download
 
-Prebuilt packages are on the [Releases](../../releases) page.
+Prebuilt packages are available on the [Releases](../../releases) page.
 
-| Platform | File |
+| Platform | Package |
 |---|---|
 | macOS (Apple Silicon) | `BlinkenBadge_<version>_aarch64.dmg` |
-| Windows | `BlinkenBadge_<version>_x64-setup.exe` or `.msi` |
+| Windows | `BlinkenBadge_<version>_x64-setup.exe`, `.msi` |
 | Debian, Ubuntu | `.deb` |
 | Fedora, RHEL | `.rpm` |
-| Any Linux, portable | `.AppImage` |
-| Linux, binary only | `.tar.gz` |
+| Linux (Portable) | `.AppImage` |
+| Linux (Standalone Binary) | `.tar.gz` |
 
-macOS builds are signed and notarized, and are Apple Silicon only. Intel Macs
-need a build from source.
+macOS builds are signed, notarized, and compiled for Apple Silicon (aarch64). Intel Macs require building from source.
 
-Windows builds are not signed, so SmartScreen warns on first run: choose "More
-info", then "Run anyway".
+Windows builds are unsigned. To bypass Windows SmartScreen:
+1. Select **More info**.
+2. Select **Run anyway**.
 
-Linux builds target glibc 2.35 (Ubuntu 22.04) and will not run on older
-distributions. The `.deb` and `.rpm` declare their dependencies and are the
-better choice; the `.tar.gz` is the bare executable and expects
-`webkit2gtk-4.1` to be installed already.
+Linux builds target glibc 2.35 or newer (Ubuntu 22.04+). The `.deb` and `.rpm` packages declare system dependencies automatically. The `.tar.gz` archive contains only the executable and requires system package `webkit2gtk-4.1`.
 
-## Web client
+## Web Client
 
-The same editor runs in a browser with nothing installed: drawing tools, the
-timeline, message slots, documents and both transports.
+A web build of the editor runs in Chromium browsers via WebHID and Web Bluetooth.
 
-```bash
-cd BlinkenBadge
-npm run dev:web      # http://localhost:5180
-npm run build:web    # -> BlinkenBadge/dist-web/, upload anywhere over HTTPS
-```
+Supported on Android via Chrome (Web Bluetooth only). Not supported on iOS due to lack of WebHID and Web Bluetooth in WebKit.
 
-It is the only way to use BlinkenBadge on **Android**. It cannot run on iOS,
-where Safari implements neither WebHID nor Web Bluetooth. Three things differ
-from the desktop and always will: connecting a badge needs a click, documents
-are handles rather than paths, and double-clicking a `.badge` file does not
-open it.
+### Running Locally
 
-Both builds are one codebase. Only the host-specific parts live behind
-`src/platform/`, and `vite.config.ts` swaps the implementation at build time so
-neither bundle carries the other's baggage. See
-[web/README.md](web/README.md).
+1. Change directory:
+   ```bash
+   cd BlinkenBadge
+   ```
+2. Start the development server:
+   ```bash
+   npm run dev:web
+   ```
+3. Open `http://localhost:5180` in Chrome or Edge.
 
-## What the badge can hold
+### Building for Production
 
-Eight message slots. Each is either a single bitmap or an animation of up to
-eight frames, so a full sequence is 64 frames. The badge cycles the slots.
+1. Compile static assets:
+   ```bash
+   npm run build:web
+   ```
+2. Deploy the contents of `BlinkenBadge/dist-web/` to an HTTPS web server. WebHID and Web Bluetooth require a secure context.
 
-Slots can be reordered by dragging, with Cmd/Ctrl and Shift to move several at
-once, which matters for animations because the eight slots are one sequence. A
-slot can also be switched off with the dot beside its name: it keeps its artwork
-and its place in the list and is simply left out of the upload, so the badge
-cycles the ones that remain.
+See [web/README.md](web/README.md) for implementation details.
 
-Each slot has its own display mode, speed and options:
+## Message Slots
 
-| | |
+The badge holds 8 message slots. Each slot stores 1 static bitmap or an animation of up to 8 frames. An upload contains up to 64 frames total across all 8 slots. The badge cycles enabled slots sequentially.
+
+Disabled slots remain saved in the project but are excluded from the upload payload.
+
+| Parameter | Values |
 |---|---|
-| Modes | Scroll left, scroll right, scroll up, scroll down, fixed, animation, snowflake, picture, laser |
-| Speed | 1 to 8 |
-| Options | Blink, animated border |
-| Brightness | 25%, 50%, 75%, 100%, set per upload |
+| Modes | Scroll Left, Scroll Right, Scroll Up, Scroll Down, Fixed, Animation, Snowflake, Picture, Laser |
+| Speed | 1 to 8 (speed 6 = 250 ms/frame) |
+| Effects | Blink, Animated Border |
+| Brightness | 25%, 50%, 75%, 100% (global per upload) |
+| Frame Width | 48 px (stock firmware) or 44 px (badgemagic firmware) |
+| Frame Height | 11 px |
+| Capacity | 8 frames per slot, 64 frames per upload |
 
-Bitmaps can be wider than the 44px display. Scrolling modes use the extra
-width; animation frames are a fixed 48px each.
+## Drawing Tools
 
-## Drawing
+The editor includes pencil, eraser, line, rectangle, ellipse, flood fill, and rectangular selection (move, nudge, cut, copy, paste). Right-click erases with any active tool.
 
-Pencil, eraser, line, rectangle, ellipse, flood fill and a rectangular
-selection you can drag, nudge, cut, copy and paste. Right-click erases with any
-tool.
+Images can be imported with an adjustable luminance threshold.
 
-Text is stamped from bitmap faces drawn for an 11px display:
+The canvas preview simulates badge playback speed and includes a scrub bar to inspect frames.
 
-| Face | |
+### Bitmap Fonts
+
+Text tools stamp 11 px bitmap typefaces directly onto the canvas:
+
+| Typeface | Description |
 |---|---|
-| Serif | The badge's own blocky face |
-| Sans | Light and narrow, so more text fits across the badge |
-| Cartoon | Rounded and hand-lettered, with a bounce between letters |
-| Futuristic | Heavy and barred, with a break cut into the stems |
+| Serif | Default blocky matrix face |
+| Sans | Narrow proportional face |
+| Cartoon | Rounded display face |
+| Futuristic | Bold segmented face |
 
-Every face covers Latin, Cyrillic and accented Latin, so a word never comes out
-half in one face and half in another. Around 40 common emoji are included as
-hand-drawn pictographs. **Emoji** in the text bar shows them as the badge will
-draw them; they can also be typed or pasted straight in, from the system picker
-or anywhere else. Faces are
-chosen per stamp rather than per message, so one bitmap can mix them freely.
+All typefaces cover basic Latin, Cyrillic, accented Latin, and 42 custom 11 px emoji glyphs. Typefaces can be mixed within a single bitmap.
 
-Faces are authored as pixel art in `fonts/*.face`, not as hex tables. Nobody can
-review a letterform by reading `0x7C`. `fonts/build.py` generates the Rust
-tables and `fonts/derive.py` builds each face's Cyrillic and accented Latin from
-the letters it already has, so a face inherits its own weight and proportions
-rather than borrowing another's.
+Source artwork is defined in `fonts/*.face`. `fonts/build.py` compiles the Rust font tables and `web/fonts.json`. `fonts/derive.py` generates Cyrillic and accented glyphs from base glyphs.
 
-Images can be imported with an adjustable black and white threshold.
+## Connecting the Badge
 
-The preview runs at the badge's real speed, so timing looks the same on screen
-as it does on the hardware. A scrub bar steps through any animation or effect a
-frame at a time.
+### USB HID
 
-## Connecting the badge
+1. Connect the USB cable between the computer and badge.
+2. Verify the **USB** status indicator turns green in the transport bar.
+3. Select **Record** to upload. Transfers complete in under 1 second.
 
-### USB
+On macOS and Windows, no driver configuration is required.
 
-Connect the cable. The badge is detected automatically, a green **USB**
-indicator appears, and **Record** uploads to it in well under a second.
+On Linux, configure udev permissions:
+1. Copy the udev rule file:
+   ```bash
+   sudo cp 99-led-badge.rules /etc/udev/rules.d/
+   ```
+2. Reload rules:
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+3. Disconnect and reconnect the USB cable.
 
-On Linux the device is root-only until a udev rule grants access:
+### Bluetooth LE
 
-```bash
-sudo cp 99-led-badge.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules && sudo udevadm trigger
-```
+Bluetooth is used when no USB cable is connected.
 
-Unplug and reconnect the badge afterwards. macOS and Windows need no setup.
+To initiate a Bluetooth transfer:
+1. Disconnect the USB cable. The badge disables Bluetooth transmission while USB is connected.
+2. Press button 1 on the badge. A Bluetooth icon appears on the matrix display when ready.
+3. Select **Record** in the application.
 
-### Bluetooth
+The badge exits Bluetooth mode after each upload. Repeat step 2 before each subsequent upload.
 
-Used automatically when no cable is connected. The badge does not advertise
-until you ask it to:
+Upload time is approximately 250 ms per 16-byte write (up to 70 seconds for a full 64-frame upload). Use USB HID for uploads approaching 64 frames to prevent timeouts.
 
-1. Unplug it from USB. It stays silent over Bluetooth while connected.
-2. Press the first button. A Bluetooth icon appears when it is ready.
+### Open Firmware
 
-It drops out of Bluetooth mode after every upload, so step 2 has to be repeated
-each time.
+Badges running [badgemagic](https://github.com/fossasia/badgemagic-firmware) firmware are recognized automatically over both USB HID and Bluetooth LE. Frame advance width is adjusted to 44 px (stock firmware uses 48 px).
 
-Bluetooth uploads are slow and can fail part-way on large animations. Prefer
-USB for anything approaching 64 frames.
-
-On macOS the first scan raises a system permission prompt.
-
-### Open firmware
-
-Badges running the
-[badgemagic](https://github.com/fossasia/badgemagic-firmware) firmware are
-recognised automatically over both transports and encoded to match: it advances
-44 columns per animation frame where the stock firmware advances 48, and sending
-the wrong one makes every frame land further sideways than the last.
-
-Its optional Bluetooth PIN is not supported. If a badge has that switched on,
-upload over USB, which never asks for a code, or turn it off in the badge's own
-SECURITY menu.
+The optional badgemagic Bluetooth PIN is not supported. To upload to a badge with a PIN enabled:
+1. Connect via USB HID, or
+2. Disable the PIN in the badge **SECURITY** menu.
 
 ## Documents
 
-| Extension | Contains | Opening one |
+| Extension | Contents | Open Action |
 |---|---|---|
-| `.badge` | A whole project, up to 8 message slots | Replaces the current document |
-| `.badgemsg` | A single message with its frames and settings | Inserts it into the current document |
+| `.badge` | Full project (up to 8 message slots) | Replaces current document |
+| `.badgemsg` | Single message slot | Inserts into current document |
 
-Both are JSON, and both are registered as file associations, so double-click
-and "Open With" work.
+Both formats use JSON and register system file associations.
 
-Work in progress is autosaved a few seconds after each edit and discarded on a
-clean exit. If the application is found to have exited uncleanly, it offers to
-restore that copy on the next launch.
+Unsaved changes are autosaved to an application cache 2 seconds after each edit and removed on clean exit. If an abnormal exit is detected on launch, a restoration prompt is displayed.
 
-## Keyboard
+## Keyboard Shortcuts
 
 | Key | Action |
 |---|---|
-| `P` `E` `L` `R` `O` `F` `S` | Pencil, eraser, line, rectangle, ellipse, fill, select |
-| `Cmd/Ctrl` + `Z` / `Shift+Z` | Undo / redo |
-| `Cmd/Ctrl` + `C` / `X` / `V` / `A` | Copy / cut / paste / select all |
-| Arrow keys | Nudge the selection, or jog the preview when nothing is selected |
-| `Alt` + `Up` / `Down` | Move the selected message slots |
-| `Delete` | Erase inside the selection |
+| `P` `E` `L` `R` `O` `F` `S` | Select tool: Pencil, Eraser, Line, Rectangle, Ellipse, Fill, Select |
+| `Cmd/Ctrl` + `Z` / `Shift+Z` | Undo / Redo |
+| `Cmd/Ctrl` + `C` / `X` / `V` / `A` | Copy / Cut / Paste / Select All |
+| Arrow keys | Nudge selection, or jog preview |
+| `Alt` + `Up` / `Down` | Reorder selected message slots |
+| `Delete` | Erase selected pixels |
 | `Esc` | Deselect |
-| `Space` | Play or pause the preview |
-| `Cmd/Ctrl` + `N` / `O` / `S` | New / open / save |
-| `Cmd/Ctrl` + `Shift` + `S` | Save as |
+| `Space` | Play or pause preview |
+| `Cmd/Ctrl` + `N` / `O` / `S` | New / Open / Save |
+| `Cmd/Ctrl` + `Shift` + `S` | Save As |
 | `Cmd/Ctrl` + `Q` | Quit |
 
 ## Building
 
-Rust (stable) and Node.js 20.19 or newer, plus:
+Prerequisites: Rust (stable) and Node.js 20.19+.
+
+### Platform Dependencies
 
 **macOS**
-
 ```bash
 xcode-select --install
 ```
 
 **Windows**
+- Microsoft C++ Build Tools
+- WebView2 Runtime
 
-Microsoft C++ Build Tools, and the WebView2 runtime if you are on an older
-Windows 10.
-
-**Linux** (Debian and Ubuntu; adjust names for other distributions)
-
+**Linux** (Debian / Ubuntu)
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
   libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libudev-dev
 ```
 
-Then:
+### Build Steps
 
-```bash
-cd BlinkenBadge
-npm install
-npm run tauri dev            # run it
-npm run tauri build          # build installers
-npm test                     # editor and preview tests
-cd src-tauri && cargo test   # encoder and font tests
-```
+1. Install JavaScript dependencies:
+   ```bash
+   cd BlinkenBadge
+   npm install
+   ```
+2. Start desktop application in development mode:
+   ```bash
+   npm run tauri dev
+   ```
+3. Run tests:
+   ```bash
+   npm test
+   cd src-tauri && cargo test
+   ```
+4. Build installers:
+   ```bash
+   npm run tauri build
+   ```
+   Installers are generated in `BlinkenBadge/src-tauri/target/release/bundle/`. Cross-compilation is not supported.
 
-Installers land in `BlinkenBadge/src-tauri/target/release/bundle/`. Builds are
-native only; cross-compiling between platforms is not supported.
+### Creating a Release
 
-### Cutting a release
+Tagging a commit with `v*` triggers the release workflow in GitHub Actions. The git tag must match the version string in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`.
 
-Pushing a `v*` tag builds every platform and attaches the installers to a draft
-GitHub release. The tag has to match the version in `package.json`,
-`Cargo.toml` and `tauri.conf.json`, or the workflow stops before building.
+1. Create a git tag:
+   ```bash
+   git tag -a v1.2.3 -m "BlinkenBadge 1.2.3"
+   ```
+2. Push the tag to GitHub:
+   ```bash
+   git push origin v1.2.3
+   ```
 
-```bash
-git tag -a v1.2.3 -m "BlinkenBadge 1.2.3"
-git push origin v1.2.3
-```
+To generate artifacts without publishing a release, trigger the **Release** workflow manually from the **Actions** tab.
 
-The same workflow runs from the Actions tab without a tag, which builds
-everything and leaves the results as workflow artifacts.
+### macOS Code Signing
 
-macOS builds are signed and notarized when these repository secrets are set,
-and built unsigned when they are not:
+macOS builds are signed and notarized when these GitHub Actions secrets are defined:
 
-| Secret | Value |
+| Secret | Description |
 |---|---|
-| `APPLE_CERTIFICATE` | Base64 of a "Developer ID Application" certificate exported as `.p12` |
-| `APPLE_CERTIFICATE_PASSWORD` | The password set when exporting it |
-| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_ID` | Apple ID used for notarization |
-| `APPLE_PASSWORD` | An app-specific password, not the account password |
-| `APPLE_TEAM_ID` | The 10-character team identifier |
+| `APPLE_CERTIFICATE` | Base64-encoded Developer ID Application `.p12` certificate |
+| `APPLE_CERTIFICATE_PASSWORD` | Certificate password |
+| `APPLE_SIGNING_IDENTITY` | Signing identity string (for example, `Developer ID Application: Name (TEAMID)`) |
+| `APPLE_ID` | Apple ID email address |
+| `APPLE_PASSWORD` | App-specific password |
+| `APPLE_TEAM_ID` | 10-character Apple Developer Team ID |
 
-`scripts/setup-macos-signing.sh` stores all six, reading the identity and team
-ID from your keychain and piping the values straight to `gh secret set` so they
-are never written to disk:
-
-```bash
-./scripts/setup-macos-signing.sh --check          # what is already set
-./scripts/setup-macos-signing.sh certificate.p12  # set everything
-```
+To export credentials from macOS Keychain into GitHub secrets:
+1. Inspect configured secrets:
+   ```bash
+   ./scripts/setup-macos-signing.sh --check
+   ```
+2. Upload certificate and credentials:
+   ```bash
+   ./scripts/setup-macos-signing.sh certificate.p12
+   ```
 
 ## Protocol
 
-[PROTOCOL.md](PROTOCOL.md) documents the wire format and both transports.
+[PROTOCOL.md](PROTOCOL.md) documents the wire format and transport specifications.
 
 ## License
 

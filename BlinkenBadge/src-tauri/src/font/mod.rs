@@ -179,7 +179,7 @@ pub fn layout(chosen: &'static Face, text: &str) -> Layout {
             }
             let bits = glyph.rows[r];
             // The whole ink field, not just the advance: a glyph is allowed to
-            // overhang its neighbour, which is how an italic tail or a wide
+            // overhang its neighbor, which is how an italic tail or a wide
             // accent works. Anything past the end of the grid is clipped.
             for x in 0..GLYPH_FIELD {
                 if (bits >> (GLYPH_FIELD - 1 - x)) & 1 == 1 {

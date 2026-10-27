@@ -21,7 +21,7 @@ export interface LedPalette {
   core: string;
   /** `r,g,b` for the preview's glow gradient. */
   rgb: string;
-  /** Onion-skinned pixel from the neighbouring frame. */
+  /** Onion-skinned pixel from the neighboring frame. */
   onion: string;
 }
 
@@ -43,7 +43,7 @@ export function ledPalette(color: LedColor): LedPalette {
   const base = parse(LED_COLORS[color]);
   return {
     on: LED_COLORS[color],
-    // A lit LED reads as a white-hot core with the colour in the halo, which
+    // A lit LED reads as a white-hot core with the color in the halo, which
     // is what the physical diodes actually look like at brightness.
     core: mix(base, WHITE, 0.45),
     rgb: `${base[0]}, ${base[1]}, ${base[2]}`,

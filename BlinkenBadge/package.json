@@ -31,7 +31,7 @@
     "vite": "^8.2.0",
     "vitest": "^4.1.10"
   },
-  "description": "Animation editor for the nyx v1 LED badge",
+  "description": "Animation editor for 44x11 monochrome LED name badges (WCH CH582)",
   "license": "Apache-2.0",
   "author": "Martin Bogomolni",
   "repository": {
