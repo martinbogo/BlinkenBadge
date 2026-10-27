@@ -707,7 +707,7 @@ export default function MobileApp() {
           >
             <h1>
               {route === "project"
-                ? "My Badge"
+                ? "Badge Slots"
                 : route === "preview"
                   ? "Preview"
                   : route === "send"
@@ -767,34 +767,49 @@ export default function MobileApp() {
               <>
                 <main className="mobile-content mobile-message-list">
                   {project.messages.map((m, index) => (
-                    <button
-                      key={m.id}
-                      className="mobile-message-card"
-                      onClick={() => go(m.text ? "text" : "draw", m)}
-                      disabled={!!busy}
-                    >
-                      <div>
-                        <strong>{m.name}</strong>
-                        <span>
-                          {m.text
-                            ? "Text"
-                            : m.mode === "animation"
-                              ? "Animation"
-                              : "Drawing"}{" "}
-                          · Slot {index + 1}
-                          {m.mode === "animation"
-                            ? ` · ${m.frames.length} Frames`
-                            : ""}
-                          {m.enabled === false ? " · Off" : ""}
-                        </span>
-                      </div>
-                      <MiniBadge message={m} brightness={project.brightness} />
-                      {m.text?.value === "" && (
-                        <span className="mobile-empty-hint">
-                          Tap to add text.
-                        </span>
-                      )}
-                    </button>
+                    <article className="mobile-slot-card" key={m.id}>
+                      <button
+                        className="mobile-message-card"
+                        onClick={() => go(m.text ? "text" : "draw", m)}
+                        disabled={!!busy}
+                      >
+                        <div>
+                          <strong>{m.name}</strong>{" "}
+                          <span>
+                            {m.text
+                              ? "Text"
+                              : m.mode === "animation"
+                                ? "Animation"
+                                : "Drawing"}{" "}
+                            · Slot {index + 1}
+                            {m.mode === "animation"
+                              ? ` · ${m.frames.length} ${m.frames.length === 1 ? "Frame" : "Frames"}`
+                              : ""}
+                            {m.enabled === false ? " · Off" : ""}
+                          </span>
+                        </div>
+                        <MiniBadge
+                          message={m}
+                          brightness={project.brightness}
+                        />
+                        {m.text?.value === "" && (
+                          <span className="mobile-empty-hint">
+                            Tap to add text.
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        className="mobile-slot-menu"
+                        aria-label={`Slot ${index + 1} Options`}
+                        disabled={!!busy}
+                        onClick={() => {
+                          setSelectedId(m.id);
+                          setPanel("message");
+                        }}
+                      >
+                        <StudioIcon name="more" />
+                      </button>
+                    </article>
                   ))}
                 </main>
                 <footer className="mobile-footer">
@@ -1668,6 +1683,35 @@ export default function MobileApp() {
             )}
             {panel === "message" && (
               <>
+                <p>
+                  Slot {project.messages.indexOf(active) + 1} · {active.name}
+                </p>
+                <div className="mobile-control-grid">
+                  <button
+                    disabled={project.messages.length >= MAX_MESSAGES}
+                    onClick={() => {
+                      const copy = {
+                        ...active,
+                        id: newMessage("fixed").id,
+                        name: `${active.name} Copy`,
+                        frames: active.frames.map(cloneFrame),
+                      };
+                      commit((p) => ({
+                        ...p,
+                        messages: [...p.messages, copy],
+                      }));
+                      go(copy.text ? "text" : "draw", copy);
+                    }}
+                  >
+                    Duplicate Slot
+                  </button>
+                  <button
+                    className="mobile-danger"
+                    onClick={() => setPanel("confirm-delete")}
+                  >
+                    Delete Slot
+                  </button>
+                </div>
                 <button
                   disabled={project.messages[0].id === active.id}
                   onClick={() => moveSlot(-1)}
@@ -1714,27 +1758,6 @@ export default function MobileApp() {
                     Edit Pixels
                   </button>
                 )}
-                <button
-                  disabled={project.messages.length >= MAX_MESSAGES}
-                  onClick={() => {
-                    const copy = {
-                      ...active,
-                      id: newMessage("fixed").id,
-                      name: `${active.name} Copy`,
-                      frames: active.frames.map(cloneFrame),
-                    };
-                    commit((p) => ({ ...p, messages: [...p.messages, copy] }));
-                    go(copy.text ? "text" : "draw", copy);
-                  }}
-                >
-                  Duplicate Slot
-                </button>
-                <button
-                  disabled={project.messages.length <= 1}
-                  onClick={() => setPanel("confirm-delete")}
-                >
-                  Delete Slot
-                </button>
               </>
             )}
             {panel === "convert" && (
@@ -1747,14 +1770,17 @@ export default function MobileApp() {
                   onClick={() => {
                     update(active.id, (m) => ({ ...m, text: undefined }));
                     setPanel(null);
-                    history.replaceState(
-                      {
-                        mobileRoute: "draw",
-                        mobileDepth: navigationDepth.current,
-                      },
-                      "",
-                    );
-                    setRoute("draw");
+                    if (route === "project") go("draw");
+                    else {
+                      history.replaceState(
+                        {
+                          mobileRoute: "draw",
+                          mobileDepth: navigationDepth.current,
+                        },
+                        "",
+                      );
+                      setRoute("draw");
+                    }
                   }}
                 >
                   Edit Pixels
@@ -1780,15 +1806,30 @@ export default function MobileApp() {
             )}
             {panel === "confirm-delete" && (
               <>
-                <p>This removes the selected slot.</p>
+                <p>
+                  Delete “{active.name}” from Slot{" "}
+                  {project.messages.indexOf(active) + 1}?
+                  {project.messages.length === 1
+                    ? " A blank slot will take its place."
+                    : ""}{" "}
+                  Use Undo in Project Options to restore it.
+                </p>
                 <button
+                  className="mobile-danger"
                   onClick={() => {
-                    commit((p) => ({
-                      ...p,
-                      messages: p.messages.filter((m) => m.id !== active.id),
-                    }));
-                    setSelectedId(null);
+                    commit((p) => {
+                      const remaining = p.messages.filter(
+                        (m) => m.id !== active.id,
+                      );
+                      return {
+                        ...p,
+                        messages: remaining.length
+                          ? remaining
+                          : emptyMobileProject().messages,
+                      };
+                    });
                     go("project");
+                    setSelectedId(null);
                   }}
                 >
                   Delete Slot

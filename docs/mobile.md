@@ -7,7 +7,7 @@ Native test builds use the shared Rust encoder, project format, pixel fonts, dra
 | Desktop Capability | Mobile Control | Verification |
 |---|---|---|
 | Eight slots, eight animation frames per slot | Add > Animation; each slot has its own frame strip | 64-frame export and send tests |
-| Slot name, order, enable, duplicate, delete | Slot Options | Shared project model; Undo restores edits |
+| Slot name, order, enable, duplicate, delete | Menu beside each slot; Slot Options | Targeted deletion, final-slot reset, and Undo tests |
 | Frame add, duplicate, delete, reorder | Copy and Blank buttons; Frame Options | Editing flow and undo tests |
 | Previous-frame onion skin | Onion button; Frame Options > Onion Skin | Overlay and toggle tests; overlay is excluded from saved pixels |
 | Copy previous frame | Frame Options > Copy Previous | Shared frame cloning |
@@ -26,6 +26,8 @@ Native test builds use the shared Rust encoder, project format, pixel fonts, dra
 | LED preview color | Project Options > LED Color | Shared palette; local preference |
 | Whole-project and single-slot files | Project Options; Slot Options > Export Slot | Shared `.badge` and `.badgemsg` codecs |
 | Brightness, enabled-slot upload, capacity | Send | Shared encoder; 64-frame transport specification test |
+
+The home screen is titled Badge Slots. Each card has a separate options button for deleting, duplicating, renaming, ordering, enabling, or exporting that slot. Delete asks for confirmation and Undo restores the complete creation. Deleting the last creation replaces it with a blank slot to retain the shared one-to-eight-slot document format.
 
 Empty previews and the canvas show unlit pixels. The drawing screen keeps a full badge monitor visible above the canvas in portrait and beside it in landscape. Focus keeps a smaller full badge monitor while hiding the slot header and filmstrip.
 
