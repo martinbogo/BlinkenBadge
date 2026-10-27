@@ -5,7 +5,7 @@ set -euo pipefail
 # Use Ubuntu's official HTTPS archive; APT signature verification remains enabled.
 sudo python3 - <<'PYTHON'
 from pathlib import Path
-sources = [Path("/etc/apt/sources.list")]
+sources = [Path("/etc/apt/sources.list"), Path("/etc/apt/apt-mirrors.txt")]
 sources += list(Path("/etc/apt/sources.list.d").glob("*.list"))
 sources += list(Path("/etc/apt/sources.list.d").glob("*.sources"))
 for source in sources:
