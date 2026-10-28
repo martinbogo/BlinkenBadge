@@ -8,7 +8,7 @@ Native test builds use the shared Rust encoder, project format, pixel fonts, dra
 |---|---|---|
 | Eight slots, eight animation frames per slot | Add > Animation; each slot has its own frame strip | 64-frame export and send tests |
 | Slot name, order, enable, duplicate, delete | Menu beside each slot; Slot Options | Targeted deletion, final-slot reset, and Undo tests |
-| Frame add, duplicate, delete, reorder | Copy and Blank buttons; Frame Options | Editing flow and undo tests |
+| Frame add, duplicate, delete, reorder | Duplicate and New buttons; Frame Options | Editing flow and undo tests |
 | Previous-frame onion skin | Onion button; Frame Options > Onion Skin | Overlay and toggle tests; overlay is excluded from saved pixels |
 | Copy previous frame | Frame Options > Copy Previous | Shared frame cloning |
 | All-slot and individual-slot playback | Preview > Playback | Scrub test reaches slot 8, frame 8 |
@@ -107,6 +107,40 @@ Both development applications use `com.martin.blinkenbadge.dev` and the display 
 CI builds an Android ARM64 debug APK and an unsigned iOS ARM64 archive without store signing credentials. Both builds are required by the aggregate `checks` job.
 
 ## Device Acceptance
+
+### Animation Results
+
+Physical tests on October 28, 2026 used application commit `c35cbfa40af7141611894430c3ef1c6d36cffad0` and the development application on both devices. iPhone input used iPhone Mirroring. OnePlus input used USB ADB after Android Studio mirroring failed to forward input.
+
+| Check | iPhone 17 Pro Max, iOS 27.0.1 | OnePlus CPH2583, Android 16 |
+|---|---|---|
+| Create eight distinct frames in one slot | Pass | Pass |
+| New blank frame with previous-frame onion guide | Pass; saved ink counts `[5, 0]` | Pass; saved ink counts `[5, 0]` |
+| Toggle onion guide off and on | Pass | Pass |
+| Duplicate, reorder, delete, and undo frames | Pass | Pass |
+| Eight-frame limit disables New and Duplicate | Pass | Pass |
+| Change speed to 1/8 | Pass | Pass |
+| Canvas playback and frame-strip advancement | Pass | Pass |
+| Drawing during playback leaves saved artwork unchanged | Pass | Pass |
+| Pause and erase a lit pixel in the visible frame | Pass; only frame 3 changed | Pass; only frame 6 changed |
+| Undo restores the paused-frame edit | Pass | Pass; Redo also verified |
+| 4× Focus and frame stepping retain zoom | Pass | Pass |
+| Duplicate a slot and modify its first frame independently | Pass | Pass |
+| All-slot preview reaches slot 3, frame 8 | Pass | Pass |
+| Edit This Slot opens the previewed frame | Pass | Pass |
+| Terminate and relaunch retains the complete saved project | Pass; exact project equality | Pass; exact project equality |
+| Original user slots remain unchanged | Pass | Pass |
+
+Each phone retains `QA Bounce` and `QA Bounce Copy`, with eight distinct frames per slot. The copied slot differs only in frame 1. No application changes were required by these tests. Saved-project comparisons confirm frame data; screenshots confirm visible controls and onion overlays. [Sanitized results](device-tests/2026-10-28/results.json) exclude user artwork, device identifiers, and draft paths.
+
+| Evidence | iPhone | OnePlus |
+|---|---|---|
+| Blank frame with onion guide | [Screenshot](device-tests/2026-10-28/ios-onion.png) | [Screenshot](device-tests/2026-10-28/android-onion.png) |
+| 4× Focus canvas | [Screenshot](device-tests/2026-10-28/ios-focus.png) | [Screenshot](device-tests/2026-10-28/android-focus.png) |
+
+These tests cover two animation slots per phone. Physical pinch/pan gestures, rotation, eight-slot/64-frame device stress tests, native file round-trips, and older-device coverage remain unverified. Physical badge transfer was deferred because the badge was unavailable. Onion exclusion from transmitted artwork still requires a badge check.
+
+### Remaining Acceptance
 
 1. Create an animation in each of eight slots.
 2. Add eight distinct frames to each slot.
