@@ -25,6 +25,13 @@ interface Props {
   onFrames(): void;
   onTools(): void;
   onMore(): void;
+  onSend(): void;
+  onCopy(): void;
+  onCut(): void;
+  onPaste(): void;
+  onSelectionTools(): void;
+  onSelectionDone(): void;
+  hasClipboard: boolean;
   undo(): void;
   redo(): void;
   canUndo: boolean;
@@ -36,6 +43,12 @@ interface Props {
 }
 
 export default function DrawingWorkspace(p: Props) {
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 1800);
+    return () => clearTimeout(timer);
+  }, [notice]);
   const animation = p.message.mode === "animation";
   const shown =
     animation && p.playing
@@ -105,82 +118,154 @@ export default function DrawingWorkspace(p: Props) {
           {history}
         </div>
       ) : (
-        <div className="studio-monitor">{badge}</div>
+        <div className="studio-monitor">
+          <div className="studio-monitor-display">{badge}</div>
+          <button
+            className="studio-action"
+            aria-label="Send to Badge"
+            onClick={p.onSend}
+          >
+            <StudioIcon name="send" />
+            <span>Send</span>
+          </button>
+        </div>
       )}
       <div
         className="studio-controls"
         role="toolbar"
-        aria-label="Playback and Frames"
+        aria-label={
+          p.canvas.tool === "select" ? "Selected Pixels" : "Playback and Frames"
+        }
       >
-        {animation && p.focus ? (
-          <button
-            aria-label="Previous Frame"
-            disabled={shown === 0}
-            onClick={() => p.onSelect(shown - 1)}
-          >
-            <StudioIcon name="left" />
-          </button>
-        ) : (
-          play
-        )}
-        {animation ? (
+        {p.canvas.tool === "select" ? (
           <>
-            {p.focus && play}
             <button
-              className="studio-frame-position"
-              aria-label="Frame Options"
-              onClick={p.onFrames}
+              className="studio-action"
+              aria-label="Copy Pixels"
+              disabled={!p.canvas.selection}
+              onClick={() => {
+                p.onCopy();
+                setNotice("Copied Pixels");
+              }}
             >
-              <span>
-                Frame {shown + 1}/{p.message.frames.length}
-              </span>
-              <small>Options</small>
+              <StudioIcon name="copy" />
+              <span>Copy</span>
             </button>
             <button
               className="studio-action"
-              aria-label="Onion Skin"
-              aria-pressed={p.onion}
-              disabled={p.playing}
-              onClick={() => p.onOnion(!p.onion)}
+              aria-label="Cut Pixels"
+              disabled={!p.canvas.selection}
+              onClick={() => {
+                p.onCut();
+                setNotice("Cut Pixels");
+              }}
             >
-              <StudioIcon name="onion" />
-              <span>Onion</span>
+              <StudioIcon name="cut" />
+              <span>Cut</span>
             </button>
-            {p.focus ? (
-              <button
-                aria-label="Next Frame"
-                disabled={shown === p.message.frames.length - 1}
-                onClick={() => p.onSelect(shown + 1)}
-              >
-                <StudioIcon name="right" />
-              </button>
-            ) : (
-              <>
-                <button
-                  className="studio-action"
-                  aria-label="Duplicate Frame"
-                  disabled={p.message.frames.length >= ANIMATION_MAX_FRAMES}
-                  onClick={p.onDuplicate}
-                >
-                  <StudioIcon name="copy" />
-                  <span>Copy</span>
-                </button>
-                <button
-                  className="studio-action"
-                  aria-label="Add Frame"
-                  disabled={p.message.frames.length >= ANIMATION_MAX_FRAMES}
-                  onClick={p.onBlank}
-                >
-                  <StudioIcon name="plus" />
-                  <span>Blank</span>
-                </button>
-              </>
-            )}
+            <button
+              className="studio-action"
+              aria-label="Paste Pixels"
+              disabled={!p.hasClipboard}
+              onClick={() => {
+                p.onPaste();
+                setNotice("Pasted Pixels");
+              }}
+            >
+              <StudioIcon name="paste" />
+              <span>Paste</span>
+            </button>
+            <button
+              className="studio-action"
+              aria-label="Selection Options"
+              onClick={p.onSelectionTools}
+            >
+              <StudioIcon name="more" />
+              <span>Options</span>
+            </button>
+            <button
+              className="studio-action"
+              aria-label="Finish Selection"
+              onClick={p.onSelectionDone}
+            >
+              <StudioIcon name="check" />
+              <span>Done</span>
+            </button>
           </>
         ) : (
-          <span className="studio-frame-caption">
-            {p.playing ? "Playing Preview" : "Display Preview"}
-          </span>
+          <>
+            {" "}
+            {animation && p.focus ? (
+              <button
+                aria-label="Previous Frame"
+                disabled={shown === 0}
+                onClick={() => p.onSelect(shown - 1)}
+              >
+                <StudioIcon name="left" />
+              </button>
+            ) : (
+              play
+            )}
+            {animation ? (
+              <>
+                {p.focus && play}
+                <button
+                  className="studio-frame-position"
+                  aria-label="Frame Options"
+                  onClick={p.onFrames}
+                >
+                  <span>
+                    Frame {shown + 1}/{p.message.frames.length}
+                  </span>
+                  <small>Speed {p.message.speed}/8</small>
+                </button>
+                <button
+                  className="studio-action"
+                  aria-label="Onion Skin"
+                  aria-pressed={p.onion && shown > 0}
+                  disabled={p.playing || shown === 0}
+                  onClick={() => p.onOnion(!p.onion)}
+                >
+                  <StudioIcon name="onion" />
+                  <span>Onion</span>
+                </button>
+                {p.focus ? (
+                  <button
+                    aria-label="Next Frame"
+                    disabled={shown === p.message.frames.length - 1}
+                    onClick={() => p.onSelect(shown + 1)}
+                  >
+                    <StudioIcon name="right" />
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className="studio-action"
+                      aria-label="Duplicate Frame"
+                      disabled={p.message.frames.length >= ANIMATION_MAX_FRAMES}
+                      onClick={p.onDuplicate}
+                    >
+                      <StudioIcon name="copy" />
+                      <span>Duplicate</span>
+                    </button>
+                    <button
+                      className="studio-action"
+                      aria-label="Add Frame"
+                      disabled={p.message.frames.length >= ANIMATION_MAX_FRAMES}
+                      onClick={p.onBlank}
+                    >
+                      <StudioIcon name="plus" />
+                      <span>New</span>
+                    </button>
+                  </>
+                )}
+              </>
+            ) : (
+              <span className="studio-frame-caption">
+                {p.playing ? "Playing Preview" : "Display Preview"}
+              </span>
+            )}
+          </>
         )}
       </div>
       <main className="studio-canvas">
@@ -196,6 +281,11 @@ export default function DrawingWorkspace(p: Props) {
           viewRequest={request}
           onZoomChange={setZoom}
         />
+        {notice && (
+          <span className="studio-clipboard-notice" role="status">
+            {notice}
+          </span>
+        )}
         {p.playing && (
           <span className="studio-playback-hint">Pause to Draw</span>
         )}
@@ -226,7 +316,7 @@ export default function DrawingWorkspace(p: Props) {
         aria-label="Canvas Controls"
       >
         <button
-          className="studio-tool"
+          className="studio-tool studio-labeled"
           aria-label="Drawing Tool"
           onClick={p.onTools}
         >
@@ -244,6 +334,7 @@ export default function DrawingWorkspace(p: Props) {
               } as const
             )[p.canvas.tool]
           }
+          <small>Tools</small>
         </button>
         <div className="studio-zoom" role="group" aria-label="Canvas Zoom">
           <button
@@ -269,13 +360,20 @@ export default function DrawingWorkspace(p: Props) {
           </button>
         </div>
         <button
+          className="studio-labeled"
           aria-label={p.focus ? "Show Frames" : "Focus Canvas"}
           onClick={() => p.onFocus(!p.focus)}
         >
           <StudioIcon name={p.focus ? "collapse" : "expand"} />
+          <small>{p.focus ? "Frames" : "Focus"}</small>
         </button>
-        <button aria-label="Canvas Options" onClick={p.onMore}>
+        <button
+          className="studio-labeled"
+          aria-label="Canvas Options"
+          onClick={p.onMore}
+        >
           <StudioIcon name="more" />
+          <small>More</small>
         </button>
       </footer>
     </section>

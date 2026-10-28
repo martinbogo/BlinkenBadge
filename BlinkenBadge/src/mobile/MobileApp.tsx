@@ -50,13 +50,13 @@ import {
   type BadgeInfo,
   type Message,
   type Mode,
-  type Project,
 } from "../types";
 import { emptyMobileProject, useMobileProject } from "./useMobileProject";
 import type { MobileTool } from "./MobileCanvas";
 import Sheet from "./Sheet";
 import DrawingWorkspace from "./DrawingWorkspace";
 import StudioIcon from "./StudioIcon";
+import SendWorkspace from "./SendWorkspace";
 import "../App.css";
 import "./mobile.css";
 
@@ -75,7 +75,6 @@ type Panel =
   | "frames"
   | "selection"
   | "transform"
-  | "insert"
   | "stamp"
   | "image"
   | "color"
@@ -121,8 +120,6 @@ export default function MobileApp() {
   }, [led]);
   const [tool, setTool] = useState<MobileTool>("pencil");
   const [frameIndex, setFrameIndex] = useState(0);
-  const [fitVersion, fit] = useState(0);
-  const [zoomVersion, zoom] = useState(0);
   const [drawingFocus, setDrawingFocus] = useState(false);
   const drawingFocusRef = useRef(false);
   drawingFocusRef.current = drawingFocus;
@@ -441,6 +438,27 @@ export default function MobileApp() {
     });
     setSent(false);
   };
+  const copySelection = (cut = false) => {
+    if (!selection) return;
+    setClipboard(extractRect(frame, selection));
+    if (cut) updateFrame((f) => clearRect(f, selection));
+  };
+  const pasteSelection = () => {
+    if (!clipboard) return;
+    const x = selection?.x0 ?? 0,
+      y = selection?.y0 ?? 0;
+    updateFrame((f) => pasteBlock(f, clipboard, x, y, false));
+    setSelection({
+      x0: x,
+      y0: y,
+      x1: Math.min(active.width - 1, x + clipboard[0].length - 1),
+      y1: Math.min(10, y + clipboard.length - 1),
+    });
+  };
+  const sendScreen = () => {
+    setSent(false);
+    go("send");
+  };
   const nudge = (dx: number, dy: number) => {
     if (!selection) return;
     const moved = {
@@ -546,6 +564,7 @@ export default function MobileApp() {
     setBusy("scan");
     setError(null);
     setStatus(null);
+    setSent(false);
     try {
       const found = await platform.bleScan(6000);
       setBadges(found);
@@ -573,6 +592,7 @@ export default function MobileApp() {
     setError(null);
     setProgress(null);
     setSent(false);
+    setStatus(null);
     try {
       await flush();
       await platform.sendBle(
@@ -657,7 +677,6 @@ export default function MobileApp() {
     frames: "Frame",
     selection: "Selection",
     transform: "Transform",
-    insert: "Insert",
     stamp: "Stamp Text",
     image: "Import Image",
     color: "LED Color",
@@ -714,15 +733,21 @@ export default function MobileApp() {
                     ? "Send to Badge"
                     : active.name}
             </h1>
-            {route === "project" && <span role="status">{saveState}</span>}
+            {route === "project" && (
+              <span role="status">
+                {project.messages.length} of {MAX_MESSAGES} Slots · {saveState}
+              </span>
+            )}
           </div>
           {route === "project" ? (
             <button
+              className="studio-labeled"
               aria-label="Project Options"
               disabled={disabled}
               onClick={() => setPanel("project")}
             >
-              •••
+              <StudioIcon name="more" />
+              <small>Menu</small>
             </button>
           ) : route === "draw" ? (
             <div className="studio-header-history">
@@ -828,8 +853,7 @@ export default function MobileApp() {
                     className="mobile-primary"
                     disabled={disabled}
                     onClick={() => {
-                      setSent(false);
-                      go("send");
+                      sendScreen();
                     }}
                   >
                     Send
@@ -846,16 +870,25 @@ export default function MobileApp() {
                     playing={playing}
                     brightness={project.brightness}
                   />
-                  <button
-                    className="mobile-preview-play"
-                    aria-label={playing ? "Pause Preview" : "Play Preview"}
-                    onClick={() => {
-                      setPlaying((p) => !p);
-                      setStep(0);
-                    }}
-                  >
-                    {playing ? "Pause" : "Play"}
-                  </button>
+                  <div className="mobile-preview-actions">
+                    <button
+                      className="mobile-preview-play"
+                      aria-label={playing ? "Pause Preview" : "Play Preview"}
+                      onClick={() => {
+                        setPlaying((p) => !p);
+                        setStep(0);
+                      }}
+                    >
+                      {playing ? "Pause" : "Play"}
+                    </button>
+                    <button
+                      className="mobile-text-send"
+                      disabled={rendering}
+                      onClick={sendScreen}
+                    >
+                      Send to Badge
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label
@@ -878,14 +911,23 @@ export default function MobileApp() {
                   />
                 </div>
                 <div className="mobile-text-options">
-                  <button disabled={rendering} onClick={() => setPanel("font")}>
-                    {fonts.find((f) => f.id === face)?.name ?? "Font"}
+                  <button
+                    aria-label={`Font: ${fonts.find((f) => f.id === face)?.name ?? "Choose"}`}
+                    disabled={rendering}
+                    onClick={() => setPanel("font")}
+                  >
+                    <small>Font</small>
+                    <span>
+                      {fonts.find((f) => f.id === face)?.name ?? "Choose"}
+                    </span>
                   </button>
                   <button
                     disabled={rendering}
                     onClick={() => setPanel("motion")}
+                    aria-label={`Motion: ${MODE_LABELS[active.mode]}`}
                   >
-                    {MODE_LABELS[active.mode]}
+                    <small>Motion</small>
+                    <span>{MODE_LABELS[active.mode]}</span>
                   </button>
                   <button
                     onClick={() => {
@@ -944,6 +986,19 @@ export default function MobileApp() {
                   pauseFrame();
                   setPanel("tool");
                 }}
+                onSend={sendScreen}
+                onCopy={() => copySelection()}
+                onCut={() => copySelection(true)}
+                onPaste={pasteSelection}
+                hasClipboard={!!clipboard}
+                onSelectionTools={() => {
+                  pauseFrame();
+                  setPanel("selection");
+                }}
+                onSelectionDone={() => {
+                  setSelection(null);
+                  setTool("pencil");
+                }}
                 onMore={() => {
                   pauseFrame();
                   setPanel("canvas");
@@ -958,8 +1013,6 @@ export default function MobileApp() {
                   filled,
                   selection,
                   onSelectionChange: setSelection,
-                  fitVersion,
-                  zoomVersion,
                   onChange: (next, record) => {
                     if (!playing)
                       update(
@@ -983,6 +1036,7 @@ export default function MobileApp() {
                 selectedId={active.id}
                 initialScope={previewStart.scope}
                 initialStep={previewStart.step}
+                onSend={sendScreen}
                 onEdit={(message, frame) => {
                   go(message.text ? "text" : "draw", message);
                   setFrameIndex(frame);
@@ -990,102 +1044,34 @@ export default function MobileApp() {
               />
             )}
             {route === "send" && (
-              <main className="mobile-content mobile-send">
-                <section>
-                  <h2>{enabledMessages(project.messages).length} Slots</h2>
-                  <p>
-                    {usedColumns} / {MAX_BYTE_COLUMNS} byte columns used.
-                  </p>
-                  <div className="mobile-send-preview">
-                    {enabledMessages(project.messages).map((m) => (
-                      <MiniBadge key={m.id} message={m} />
-                    ))}
-                  </div>
-                </section>
-                <section>
-                  <h2>Badge</h2>
-                  <p>
-                    Unplug the badge from USB and press button 1 to enable
-                    Bluetooth.
-                  </p>
-                  <button
-                    className="mobile-connect"
-                    disabled={!!busy}
-                    onClick={() => void scan()}
-                  >
-                    {busy === "scan"
-                      ? "Finding Badges"
-                      : badges.length
-                        ? "Find Again"
-                        : "Find Badge"}
-                  </button>
-                  {badges.map((b) => (
-                    <button
-                      key={b.id}
-                      className="mobile-device"
-                      aria-pressed={badgeId === b.id}
-                      disabled={!!busy}
-                      onClick={() => setBadgeId(b.id)}
-                    >
-                      <span>{b.name ?? "LED Badge"}</span>
-                      <span>
-                        {b.rssi === null ? "Bluetooth" : `${b.rssi} dBm`}
-                      </span>
-                    </button>
-                  ))}
-                </section>
-                <label className="mobile-brightness">
-                  Brightness
-                  <select
-                    value={project.brightness}
-                    disabled={!!busy}
-                    onChange={(e) =>
-                      commit((p) => ({
-                        ...p,
-                        brightness: Number(
-                          e.target.value,
-                        ) as Project["brightness"],
-                      }))
-                    }
-                  >
-                    {[25, 50, 75, 100].map((n) => (
-                      <option key={n} value={n}>
-                        {n}%
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {progress && (
-                  <progress
-                    max={progress.total}
-                    value={progress.chunk}
-                    aria-label="Sending Progress"
-                  />
-                )}
-                {(status || busy === "send") && (
-                  <p role="status">
-                    {busy === "send"
-                      ? "Keep this app open until the transfer finishes."
-                      : status}
-                  </p>
-                )}
-                <button
-                  className="mobile-primary mobile-send-button"
-                  disabled={
-                    !!busy ||
-                    !badgeId ||
-                    !enabledMessages(project.messages).length ||
-                    usedColumns > MAX_BYTE_COLUMNS
-                  }
-                  onClick={() => void send()}
-                >
-                  {busy === "send"
-                    ? "Sending"
-                    : sent
-                      ? "Send Again"
-                      : "Send to Badge"}
-                </button>
-              </main>
+              <SendWorkspace
+                project={project}
+                badges={badges}
+                badgeId={badgeId}
+                busy={busy}
+                progress={progress}
+                status={status}
+                sent={sent}
+                usedColumns={usedColumns}
+                onScan={() => void scan()}
+                onSend={() => void send()}
+                onChoose={(id) => {
+                  setBadgeId(id);
+                  setStatus(null);
+                  setSent(false);
+                }}
+                onEnabled={(id, enabled) => {
+                  update(id, (m) => ({ ...m, enabled }));
+                  setSent(false);
+                  setStatus(null);
+                }}
+                onBrightness={(brightness) => {
+                  commit((p) => ({ ...p, brightness }));
+                  setSent(false);
+                  setStatus(null);
+                }}
+                onDone={done}
+              />
             )}
           </>
         )}
@@ -1093,12 +1079,21 @@ export default function MobileApp() {
       {panel && (
         <Sheet
           title={sheetTitle[panel]}
+          closeLabel={
+            panel.startsWith("confirm-") || panel === "convert"
+              ? "Cancel"
+              : "Done"
+          }
           onClose={() => setPanel(null)}
           busy={!!busy || rendering}
         >
           <div className="mobile-sheet-actions">
             {panel === "project" && (
               <>
+                <p>
+                  Edits save automatically on this device. Export a project to
+                  keep a separate copy or move it to another device.
+                </p>
                 <button onClick={() => setPanel("confirm-new")}>
                   New Project
                 </button>
@@ -1125,45 +1120,73 @@ export default function MobileApp() {
             )}
             {panel === "frames" && (
               <>
+                <label className="mobile-speed-control">
+                  Playback Speed · {active.speed}/8
+                  <input
+                    aria-label="Playback Speed"
+                    type="range"
+                    min="1"
+                    max="8"
+                    value={active.speed}
+                    onChange={(e) =>
+                      update(active.id, (m) => ({
+                        ...m,
+                        speed: Number(e.target.value),
+                      }))
+                    }
+                  />
+                  <small className="mobile-range-caption">
+                    Slower <span>Faster</span>
+                  </small>
+                </label>
                 <p>
                   Slot {project.messages.indexOf(active) + 1} · Frame{" "}
                   {frameIndex + 1} of {active.frames.length}
                 </p>
-                <label className="mobile-check">
-                  <input
-                    type="checkbox"
-                    checked={onion}
-                    onChange={(e) => setOnion(e.target.checked)}
-                  />
-                  Onion Skin
-                </label>
-                <button
-                  disabled={active.frames.length >= ANIMATION_MAX_FRAMES}
-                  onClick={() => {
-                    duplicateFrame();
-                    setPanel(null);
-                  }}
-                >
-                  Duplicate Frame
-                </button>
-                <button
-                  disabled={active.frames.length >= ANIMATION_MAX_FRAMES}
-                  onClick={() => {
-                    addBlankFrame();
-                    setPanel(null);
-                  }}
-                >
-                  Add Blank Frame
-                </button>
-                <button
-                  disabled={frameIndex === 0}
-                  onClick={() =>
-                    updateFrame(() => cloneFrame(active.frames[frameIndex - 1]))
-                  }
-                >
-                  Copy Previous
-                </button>
                 <div className="mobile-control-grid">
+                  <button
+                    disabled={active.frames.length >= ANIMATION_MAX_FRAMES}
+                    onClick={() => {
+                      duplicateFrame();
+                      setPanel(null);
+                    }}
+                  >
+                    Duplicate Frame
+                  </button>
+                  <button
+                    disabled={active.frames.length >= ANIMATION_MAX_FRAMES}
+                    onClick={() => {
+                      addBlankFrame();
+                      setPanel(null);
+                    }}
+                  >
+                    Add Blank Frame
+                  </button>
+                  <button
+                    className="mobile-danger"
+                    disabled={active.frames.length <= 1}
+                    onClick={() => {
+                      update(active.id, (m) => ({
+                        ...m,
+                        frames: m.frames.filter((_, i) => i !== frameIndex),
+                      }));
+                      setFrameIndex(Math.max(0, frameIndex - 1));
+                      setSelection(null);
+                      setPanel(null);
+                    }}
+                  >
+                    Delete Frame
+                  </button>
+                  <button
+                    disabled={frameIndex === 0}
+                    onClick={() =>
+                      updateFrame(() =>
+                        cloneFrame(active.frames[frameIndex - 1]),
+                      )
+                    }
+                  >
+                    Copy Previous
+                  </button>
                   <button
                     disabled={frameIndex === 0}
                     onClick={() => moveFrame(frameIndex - 1)}
@@ -1177,20 +1200,27 @@ export default function MobileApp() {
                     Move Frame Right
                   </button>
                 </div>
-                <button
-                  disabled={active.frames.length <= 1}
-                  onClick={() => {
-                    update(active.id, (m) => ({
-                      ...m,
-                      frames: m.frames.filter((_, i) => i !== frameIndex),
-                    }));
-                    setFrameIndex(Math.max(0, frameIndex - 1));
-                    setSelection(null);
-                    setPanel(null);
-                  }}
-                >
-                  Delete Frame
-                </button>
+                <label className="mobile-check">
+                  <input
+                    type="checkbox"
+                    checked={onion}
+                    onChange={(e) => setOnion(e.target.checked)}
+                  />
+                  Onion Skin
+                </label>
+                <p>
+                  {frameIndex === 0
+                    ? "Choose a later frame to see onion skin. "
+                    : ""}
+                  Show the previous frame as a drawing guide. These ghost pixels
+                  are not sent to the badge.
+                </p>
+                <p>
+                  {active.frames.length} of {ANIMATION_MAX_FRAMES} frames used.
+                  {active.frames.length === ANIMATION_MAX_FRAMES
+                    ? " Delete a frame to add another."
+                    : " Duplicate keeps this artwork; New starts a blank frame."}
+                </p>
               </>
             )}
             {panel === "selection" && (
@@ -1216,7 +1246,7 @@ export default function MobileApp() {
                   <button
                     disabled={!selection}
                     onClick={() => {
-                      setClipboard(extractRect(frame, selection!));
+                      copySelection();
                       setPanel(null);
                     }}
                   >
@@ -1225,8 +1255,7 @@ export default function MobileApp() {
                   <button
                     disabled={!selection}
                     onClick={() => {
-                      setClipboard(extractRect(frame, selection!));
-                      updateFrame((f) => clearRect(f, selection!));
+                      copySelection(true);
                       setPanel(null);
                     }}
                   >
@@ -1235,20 +1264,7 @@ export default function MobileApp() {
                   <button
                     disabled={!clipboard}
                     onClick={() => {
-                      const x = selection?.x0 ?? 0,
-                        y = selection?.y0 ?? 0;
-                      updateFrame((f) =>
-                        pasteBlock(f, clipboard!, x, y, false),
-                      );
-                      setSelection({
-                        x0: x,
-                        y0: y,
-                        x1: Math.min(
-                          active.width - 1,
-                          x + clipboard![0].length - 1,
-                        ),
-                        y1: Math.min(10, y + clipboard!.length - 1),
-                      });
+                      pasteSelection();
                       setPanel(null);
                     }}
                   >
@@ -1353,12 +1369,6 @@ export default function MobileApp() {
                     Shift Down
                   </button>
                 </div>
-              </>
-            )}
-            {panel === "insert" && (
-              <>
-                <button onClick={() => setPanel("stamp")}>Stamp Text</button>
-                <button onClick={() => setPanel("image")}>Import Image</button>
               </>
             )}
             {panel === "stamp" && (
@@ -1495,9 +1505,23 @@ export default function MobileApp() {
             )}
             {panel === "add" && (
               <>
+                <p>
+                  Each slot holds text, a drawing, or an animation. The badge
+                  supports eight slots.
+                </p>
                 <button onClick={() => add("text")}>Text Message</button>
+                <p className="mobile-action-help">
+                  Type a message and choose a pixel font.
+                </p>
                 <button onClick={() => add("drawing")}>Pixel Drawing</button>
+                <p className="mobile-action-help">
+                  Draw a single image on the pixel display.
+                </p>
                 <button onClick={() => add("animation")}>Animation</button>
+                <p className="mobile-action-help">
+                  Create up to eight frames in this slot. Duplicate a frame to
+                  start the next.
+                </p>
               </>
             )}
             {panel === "font" &&
@@ -1575,6 +1599,29 @@ export default function MobileApp() {
             )}
             {panel === "tool" && (
               <>
+                <div className="mobile-brush-settings">
+                  <label>
+                    Brush Size
+                    <select
+                      value={brushSize}
+                      onChange={(e) => setBrushSize(Number(e.target.value))}
+                    >
+                      {[1, 2, 3].map((n) => (
+                        <option key={n} value={n}>
+                          {n} px
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="mobile-check">
+                    <input
+                      type="checkbox"
+                      checked={filled}
+                      onChange={(e) => setFilled(e.target.checked)}
+                    />
+                    Filled Shapes
+                  </label>
+                </div>
                 <div className="mobile-control-grid">
                   {(
                     [
@@ -1604,38 +1651,43 @@ export default function MobileApp() {
                   With Draw, tap to toggle a pixel. Start on a dark pixel to
                   draw, or a lit pixel to erase.
                 </p>
+                {clipboard && (
+                  <button
+                    onClick={() => {
+                      pasteSelection();
+                      setTool("select");
+                      setPanel(null);
+                    }}
+                  >
+                    Paste Pixels
+                  </button>
+                )}
                 {tool === "select" && (
                   <button onClick={() => setPanel("selection")}>
                     Selection Options
                   </button>
                 )}
-                <label>
-                  Brush Size
-                  <select
-                    value={brushSize}
-                    onChange={(e) => setBrushSize(Number(e.target.value))}
-                  >
-                    {[1, 2, 3].map((n) => (
-                      <option key={n} value={n}>
-                        {n} px
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="mobile-check">
-                  <input
-                    type="checkbox"
-                    checked={filled}
-                    onChange={(e) => setFilled(e.target.checked)}
-                  />
-                  Filled Shapes
-                </label>
               </>
             )}
             {panel === "canvas" && (
               <>
-                <button onClick={() => setPanel("insert")}>Insert</button>
-                <button onClick={() => setPanel("transform")}>Transform</button>
+                <div className="mobile-control-grid">
+                  <button onClick={() => go("preview")}>Preview Slot</button>
+                  <button onClick={sendScreen}>Send to Badge</button>
+                  <button onClick={() => setPanel("stamp")}>Stamp Text</button>
+                  <button onClick={() => setPanel("image")}>
+                    Import Image
+                  </button>
+                  <button
+                    onClick={() => {
+                      updateFrame(() => blankFrame(active.width));
+                      setPanel(null);
+                    }}
+                  >
+                    Clear Frame
+                  </button>
+                  <button onClick={() => setPanel("motion")}>Motion</button>
+                </div>
                 <button
                   onClick={() => {
                     setTool("select");
@@ -1644,38 +1696,7 @@ export default function MobileApp() {
                 >
                   Selection
                 </button>
-                <button onClick={() => go("preview")}>Preview</button>
-                {active.mode === "animation" && (
-                  <button onClick={() => setPanel("frames")}>
-                    Frame Options
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    fit((v) => v + 1);
-                    setPanel(null);
-                  }}
-                >
-                  Fit Canvas
-                </button>
-                <button
-                  onClick={() => {
-                    zoom((v) => v + 1);
-                    setPanel(null);
-                  }}
-                >
-                  Zoom In
-                </button>
-                <button
-                  disabled={!editor.canRedo}
-                  onClick={() => {
-                    editor.redo();
-                    setPanel(null);
-                  }}
-                >
-                  Redo
-                </button>
-                <button onClick={() => setPanel("motion")}>Motion</button>
+                <button onClick={() => setPanel("transform")}>Transform</button>
                 <button onClick={() => setPanel("message")}>
                   Slot Options
                 </button>

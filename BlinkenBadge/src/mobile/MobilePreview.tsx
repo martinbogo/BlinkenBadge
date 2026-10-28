@@ -81,6 +81,7 @@ export default function MobilePreview({
   project,
   selectedId,
   onEdit,
+  onSend,
   initialScope = "sequence",
   initialStep = 0,
 }: {
@@ -89,6 +90,7 @@ export default function MobilePreview({
   initialScope?: "slot" | "sequence";
   initialStep?: number;
   onEdit(message: Message, frame: number): void;
+  onSend?(): void;
 }) {
   const [scope, setScope] = useState<"slot" | "sequence">(initialScope);
   const [playing, setPlaying] = useState(false);
@@ -128,62 +130,69 @@ export default function MobilePreview({
     setStep(Math.max(0, Math.min(period - 1, s)));
   };
   return (
-    <main className="mobile-content mobile-playback">
-      <label>
-        Playback
-        <select
-          aria-label="Preview Scope"
-          value={scope}
-          onChange={(e) => {
-            setScope(e.target.value as typeof scope);
-            setStep(0);
-            setPlaying(false);
-          }}
-        >
-          <option value="sequence">All Enabled Slots</option>
-          <option value="slot">Selected Slot</option>
-        </select>
-      </label>
-      {available && shown ? (
-        <>
-          <MiniBadge
-            message={shown}
-            step={local}
-            brightness={project.brightness}
-            hidden={!blink}
-          />
-          <p role="status">
-            Slot {project.messages.indexOf(shown) + 1} of{" "}
-            {project.messages.length}
-            {shown.mode === "animation"
-              ? ` · Frame ${(local % shown.frames.length) + 1} of ${shown.frames.length}`
-              : ` · ${shown.name}`}
-          </p>
-          <div className="mobile-control-grid">
-            <button onClick={() => setPlaying((p) => !p)}>
-              {playing ? "Pause" : "Play"}
-            </button>
-            <button onClick={() => scrub(0)}>Restart</button>
-            <button onClick={() => scrub((step - 1 + period) % period)}>
-              Previous Step
-            </button>
-            <button onClick={() => scrub((step + 1) % period)}>
-              Next Step
-            </button>
-          </div>
-          <label>
-            Timeline
-            <input
-              type="range"
-              aria-label="Preview Timeline"
-              min="0"
-              max={Math.max(0, period - 1)}
-              value={step}
-              onChange={(e) => scrub(Number(e.target.value))}
+    <>
+      <main className="mobile-content mobile-playback">
+        <label>
+          Playback
+          <select
+            aria-label="Preview Scope"
+            value={scope}
+            onChange={(e) => {
+              setScope(e.target.value as typeof scope);
+              setStep(0);
+              setPlaying(false);
+            }}
+          >
+            <option value="sequence">All Enabled Slots</option>
+            <option value="slot">Selected Slot</option>
+          </select>
+        </label>
+        {available && shown ? (
+          <>
+            <MiniBadge
+              message={shown}
+              step={local}
+              brightness={project.brightness}
+              hidden={!blink}
             />
-          </label>
+            <p role="status">
+              Slot {project.messages.indexOf(shown) + 1} of{" "}
+              {project.messages.length}
+              {shown.mode === "animation"
+                ? ` · Frame ${(local % shown.frames.length) + 1} of ${shown.frames.length}`
+                : ` · ${shown.name}`}
+            </p>
+            <div className="mobile-control-grid">
+              <button onClick={() => setPlaying((p) => !p)}>
+                {playing ? "Pause" : "Play"}
+              </button>
+              <button onClick={() => scrub(0)}>Restart</button>
+              <button onClick={() => scrub((step - 1 + period) % period)}>
+                Previous Step
+              </button>
+              <button onClick={() => scrub((step + 1) % period)}>
+                Next Step
+              </button>
+            </div>
+            <label>
+              Timeline
+              <input
+                type="range"
+                aria-label="Preview Timeline"
+                min="0"
+                max={Math.max(0, period - 1)}
+                value={step}
+                onChange={(e) => scrub(Number(e.target.value))}
+              />
+            </label>
+          </>
+        ) : (
+          <p>Enable at least one slot to preview the sequence.</p>
+        )}
+      </main>
+      <footer className="mobile-footer">
+        {available && shown && (
           <button
-            className="mobile-primary"
             onClick={() =>
               onEdit(
                 shown,
@@ -193,10 +202,13 @@ export default function MobilePreview({
           >
             Edit This Slot
           </button>
-        </>
-      ) : (
-        <p>Enable at least one slot to preview the sequence.</p>
-      )}
-    </main>
+        )}
+        {onSend && (
+          <button className="mobile-primary" onClick={onSend}>
+            Send to Badge
+          </button>
+        )}
+      </footer>
+    </>
   );
 }

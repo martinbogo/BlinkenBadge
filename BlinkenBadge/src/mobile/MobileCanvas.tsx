@@ -17,6 +17,16 @@ import {
 import type { Frame, Tool } from "../types";
 
 export type MobileTool = Tool | "pan";
+const toolHint: Record<MobileTool, string> = {
+  pencil: "Tap Pixels to Toggle",
+  eraser: "Drag to Erase",
+  line: "Drag to Draw a Line",
+  rect: "Drag to Draw a Box",
+  ellipse: "Drag to Draw an Oval",
+  fill: "Tap an Area to Fill",
+  select: "Drag to Select",
+  pan: "Drag to Move Canvas",
+};
 interface View {
   cell: number;
   offset: number;
@@ -45,8 +55,6 @@ export interface MobileCanvasProps {
   onSelectionChange?(rect: Rect | null): void;
   brushSize?: number;
   filled?: boolean;
-  fitVersion?: number;
-  zoomVersion?: number;
   disabled?: boolean;
   viewRequest?: ViewRequest;
   onZoomChange?(scale: number): void;
@@ -60,8 +68,6 @@ export default function MobileCanvas({
   onSelectionChange,
   brushSize = 1,
   filled = false,
-  fitVersion = 0,
-  zoomVersion = 0,
   disabled = false,
   viewRequest,
   onZoomChange,
@@ -173,12 +179,6 @@ export default function MobileCanvas({
     if (followsFit.current) fitView();
   }, [fitCell, width]);
   useEffect(() => {
-    if (fitVersion) fitView();
-  }, [fitVersion]);
-  useEffect(() => {
-    if (zoomVersion) scaleView(view.cell * 1.5);
-  }, [zoomVersion]);
-  useEffect(() => {
     if (viewRequest?.serial) {
       if (viewRequest.scale === "fit") fitView();
       else scaleView(fitCell * viewRequest.scale);
@@ -270,13 +270,13 @@ export default function MobileCanvas({
     <div className="mobile-canvas-host" ref={host}>
       <span className="mobile-zoom-label">
         {Math.round((view.cell / fitCell) * 100)}% ·{" "}
-        {!disabled && tool === "pencil"
-          ? "Tap Pixels to Toggle"
-          : !disabled && tool === "eraser"
-            ? "Drag to Erase"
-            : view.cell > fitCell + 0.1
-              ? "Two Fingers to Move"
-              : "Full Badge View"}
+        {disabled
+          ? view.cell > fitCell + 0.1
+            ? "Two Fingers to Move"
+            : "Full Badge View"
+          : tool === "select" && selection
+            ? "Drag Inside to Move"
+            : toolHint[tool]}
       </span>
       <svg
         className="mobile-pixel-canvas"

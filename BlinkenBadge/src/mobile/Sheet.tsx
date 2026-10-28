@@ -6,11 +6,13 @@ export default function Sheet({
   children,
   onClose,
   busy = false,
+  closeLabel = "Done",
 }: {
   title: string;
   children: ReactNode;
   onClose(): void;
   busy?: boolean;
+  closeLabel?: string;
 }) {
   const ref = useRef<HTMLElement>(null);
   const close = useRef(onClose);
@@ -96,7 +98,7 @@ export default function Sheet({
         <header>
           <h2>{title}</h2>
           <button disabled={busy} onClick={onClose}>
-            Done
+            {closeLabel}
           </button>
         </header>
         {children}
