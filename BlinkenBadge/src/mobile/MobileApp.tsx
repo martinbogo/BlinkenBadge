@@ -415,6 +415,7 @@ export default function MobileApp() {
       text: undefined,
       frames: m.frames.map((f, i) => (i === frameIndex ? fn(f) : f)),
     }));
+  const clearFrame = () => updateFrame(() => blankFrame(active.width));
   const moveFrame = (to: number) => {
     if (to < 0 || to >= active.frames.length) return;
     update(active.id, (m) => {
@@ -1340,22 +1341,7 @@ export default function MobileApp() {
                   <button onClick={() => updateFrame(flipV)}>
                     Flip Vertical
                   </button>
-                  <button
-                    onClick={() =>
-                      update(active.id, (m) => ({
-                        ...m,
-                        text: undefined,
-                        width: BADGE_WIDTH,
-                        frames: m.frames.map((f, i) =>
-                          i === frameIndex
-                            ? blankFrame(BADGE_WIDTH)
-                            : resizeFrame(f, BADGE_WIDTH),
-                        ),
-                      }))
-                    }
-                  >
-                    Clear Frame
-                  </button>
+                  <button onClick={clearFrame}>Clear Frame</button>
                   <button onClick={() => updateFrame((f) => shift(f, -1, 0))}>
                     Shift Left
                   </button>
@@ -1680,7 +1666,7 @@ export default function MobileApp() {
                   </button>
                   <button
                     onClick={() => {
-                      updateFrame(() => blankFrame(active.width));
+                      clearFrame();
                       setPanel(null);
                     }}
                   >

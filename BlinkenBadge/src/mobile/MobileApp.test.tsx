@@ -655,6 +655,43 @@ describe("mobile desktop feature parity", () => {
     await screen.findByText("The badge accepted the transfer.");
     expect(host.sendBle.mock.calls[0][0]).toHaveLength(1);
   });
+  it("clears a wide drawing consistently from either menu without cropping it", async () => {
+    const user = userEvent.setup();
+    const message = {
+      ...newMessage("scroll_left"),
+      width: 88,
+      frames: [blankFrame(88)],
+    };
+    message.frames[0][4][70] = true;
+    host.recoveryRead.mockResolvedValue({
+      json: serializeProject({ brightness: 100, messages: [message] }),
+      path: null,
+      saved_at: "",
+    });
+    render(<MobileApp />);
+    await user.click(await screen.findByRole("button", { name: /Untitled/ }));
+    for (const group of [null, "Transform"]) {
+      await user.click(screen.getByRole("button", { name: "Canvas Options" }));
+      if (group) await user.click(screen.getByRole("button", { name: group }));
+      await user.click(screen.getByRole("button", { name: "Clear Frame" }));
+      if (screen.queryByRole("dialog"))
+        await user.click(
+          within(screen.getByRole("dialog")).getByRole("button", {
+            name: "Done",
+          }),
+        );
+      expect(
+        screen.getByRole("img", { name: /88 by 11 pixel canvas/ }),
+      ).toBeTruthy();
+      await user.click(screen.getByRole("button", { name: "Undo" }));
+    }
+    await user.click(screen.getByRole("button", { name: "Canvas Options" }));
+    await user.click(screen.getByRole("button", { name: "Slot Options" }));
+    await user.click(screen.getByRole("button", { name: "Export Slot" }));
+    expect(
+      parseMessage(host.exportDocument.mock.calls[0][0] as string).frames,
+    ).toEqual(message.frames);
+  });
   it("offers all twelve pixel fonts and renders the selected face", async () => {
     const user = userEvent.setup();
     await open();
