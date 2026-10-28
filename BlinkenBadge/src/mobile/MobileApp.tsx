@@ -57,12 +57,14 @@ import Sheet from "./Sheet";
 import DrawingWorkspace from "./DrawingWorkspace";
 import StudioIcon from "./StudioIcon";
 import SendWorkspace from "./SendWorkspace";
+import PrivacyNotice from "./PrivacyNotice";
 import "../App.css";
 import "./mobile.css";
 
 type Route = "project" | "text" | "draw" | "send" | "preview";
 type Panel =
   | "project"
+  | "privacy"
   | "add"
   | "font"
   | "motion"
@@ -669,6 +671,7 @@ export default function MobileApp() {
   };
   const sheetTitle: Record<Exclude<Panel, null>, string> = {
     project: "Project",
+    privacy: "Privacy",
     add: "Add Slot",
     font: "Font",
     motion: "Motion",
@@ -1117,8 +1120,10 @@ export default function MobileApp() {
                   Redo
                 </button>
                 <button onClick={() => setPanel("color")}>LED Color</button>
+                <button onClick={() => setPanel("privacy")}>Privacy</button>
               </>
             )}
+            {panel === "privacy" && <PrivacyNotice />}
             {panel === "frames" && (
               <>
                 <label className="mobile-speed-control">

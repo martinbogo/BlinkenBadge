@@ -72,7 +72,7 @@ Send explicitly prepares checked slots for a transfer; finding or selecting a ba
 | Open With / share intents | Not registered on mobile; use Import Project or Import Slot |
 | Bluetooth PIN | Unsupported, as on desktop; disable the badge PIN before sending |
 | Android transfer progress | Busy state and completion/error; per-chunk progress is not exposed yet |
-| Store releases | Not configured; these builds are for device testing |
+| Store releases | Separate BlinkenBadge listings; version 1.0.50 build 1 signed locally for store testing |
 
 ## Compatibility Targets
 
@@ -104,7 +104,31 @@ Run commands from `BlinkenBadge/` after `npm ci`.
 
 Both development applications use `com.martin.blinkenbadge.dev` and the display name `BlinkenBadge Dev`. Desktop application identifiers remain unchanged. Mobile production configurations build separate `dist-ios/` and `dist-android/` frontends.
 
-CI builds an Android ARM64 debug APK and an unsigned iOS ARM64 archive without store signing credentials. Both builds are required by the aggregate `checks` job.
+CI builds an Android ARM64 debug APK, an unsigned Android ARM64 release AAB, and an unsigned iOS ARM64 release archive without store signing credentials. The Android release check rejects 64-bit ELF libraries with LOAD alignment below 16 KB. Both platform jobs are required by the aggregate `checks` job.
+
+## Store Testing
+
+Both store applications use `com.martin.blinkenbadge`. They are separate from the existing Badge Studio application, `com.martinbogo.badgestudio`. The requested price is US$1.99 as a one-time purchase, with store-generated regional equivalents.
+
+1. Install the Android SDK, NDK 28.2.13676358, JDK, and Rust targets `aarch64-linux-android`, `armv7-linux-androideabi`, and `x86_64-linux-android`.
+2. Run `python3 scripts/setup-android-signing.py --create` once to create a separate upload key on macOS.
+3. Back up `~/.config/blinkenbadge/signing/upload.p12` and its Keychain credential before uploading the first bundle.
+4. Run `python3 scripts/build-mobile-beta.py android --build-number 1` from the repository root.
+5. Install the Apple Distribution certificate and the `BlinkenBadge App Store` provisioning profile for team `5QAGYV54MK`.
+6. Run `python3 scripts/build-mobile-beta.py ios --build-number 1` from the repository root.
+7. Increment each platform's build number for subsequent uploads.
+
+The build helper exports artifacts without uploading or inviting testers. Signed artifacts are stored under ignored `mobile-builds/<version>-<build>/`. Android targets ARM64, ARMv7, and x86_64, with minimum API 24 and target API 36. iOS targets ARM64 with minimum iOS 15.0. Compilation does not certify older hardware or OS behavior.
+
+Android signing reads all four `BLINKENBADGE_ANDROID_KEYSTORE`, `BLINKENBADGE_ANDROID_KEY_ALIAS`, `BLINKENBADGE_ANDROID_KEYSTORE_PASSWORD`, and `BLINKENBADGE_ANDROID_KEY_PASSWORD` environment variables, or the local key with its password in Keychain service `com.martin.blinkenbadge.android-upload`, account `upload`. Partial credentials fail configuration; release builds never use a debug key. `--unsigned` explicitly produces validation artifacts without signing credentials.
+
+The Android helper normalizes JAR manifest/signature entry order without changing signed entry contents, verifies the signature, and checks 64-bit ELF LOAD alignment. The validated bundle also specifies `PAGE_ALIGNMENT_16K` for generated APKs. A 16 KB runtime test remains outstanding.
+
+The iOS helper creates an archive, then exports an App Store Connect IPA with `src-tauri/ExportOptions.beta.plist`. The validated IPA has `get-task-allow=false`, `beta-reports-active=true`, and the bundled `PrivacyInfo.xcprivacy`. Required file-metadata reasons cover private app files and user-selected documents. The app uses operating-system encryption; `ITSAppUsesNonExemptEncryption` is false.
+
+Project > Privacy displays the notice offline. `scripts/render-privacy.py` renders `docs/privacy.html` from the same notice. The public policy URL must be hosted before completing the store privacy-policy fields. Source review found no developer-operated analytics, advertising, tracking, or project-upload service. Platform beta diagnostics and user-selected cloud exports are described separately in the notice.
+
+Keep beta testing focused on editing until physical badge transfers are verified on both platforms. Native file-picker round-trips, older-device coverage, and store-side build processing remain separate acceptance checks.
 
 ## Device Acceptance
 

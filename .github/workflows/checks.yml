@@ -76,6 +76,10 @@ jobs:
       - name: Typecheck
         working-directory: BlinkenBadge
         run: npx tsc --noEmit
+      - name: Check generated privacy page
+        run: |
+          python3 scripts/render-privacy.py
+          git diff --exit-code -- docs/privacy.html
       - name: Test
         working-directory: BlinkenBadge
         run: npm test
@@ -118,6 +122,11 @@ jobs:
       - name: Build Android test APK
         working-directory: BlinkenBadge
         run: npm run tauri -- android build --debug --target aarch64 --apk --ci
+      - name: Build unsigned Android release bundle
+        working-directory: BlinkenBadge
+        run: npm run tauri -- android build --target aarch64 --aab --ci
+      - name: Check Android native page alignment
+        run: python3 scripts/check-android-bundle.py BlinkenBadge/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
 
   ios:
     runs-on: macos-latest
@@ -145,7 +154,9 @@ jobs:
         working-directory: BlinkenBadge
         env:
           APPLE_DEVELOPMENT_TEAM: 5QAGYV54MK
-        run: npm run tauri -- ios build --debug --target aarch64 --no-sign --archive-only --ci
+        run: npm run tauri -- ios build --target aarch64 --no-sign --archive-only --ci
+      - name: Check bundled iOS privacy manifest
+        run: plutil -lint BlinkenBadge/src-tauri/gen/apple/build/blinkenbadge_iOS.xcarchive/Products/Applications/BlinkenBadge.app/PrivacyInfo.xcprivacy
 
   dependency-audit:
     runs-on: ubuntu-22.04
