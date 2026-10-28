@@ -72,7 +72,7 @@ Send explicitly prepares checked slots for a transfer; finding or selecting a ba
 | Open With / share intents | Not registered on mobile; use Import Project or Import Slot |
 | Bluetooth PIN | Unsupported, as on desktop; disable the badge PIN before sending |
 | Android transfer progress | Busy state and completion/error; per-chunk progress is not exposed yet |
-| Store releases | Separate BlinkenBadge listings; version 1.0.50 build 1 signed locally for store testing |
+| Store releases | Separate paid BlinkenBadge listings; version 1.0.50 build 1 uploaded without tester distribution |
 
 ## Compatibility Targets
 
@@ -109,6 +109,8 @@ CI builds an Android ARM64 debug APK, an unsigned Android ARM64 release AAB, and
 ## Store Testing
 
 Both store applications use `com.martin.blinkenbadge`. They are separate from the existing Badge Studio application, `com.martinbogo.badgestudio`. The requested price is US$1.99 as a one-time purchase, with store-generated regional equivalents.
+
+On October 28, 2026, both listings had US$1.99 saved. Apple processed version 1.0.50 build 1 to TestFlight's `Ready to Submit` state. Google accepted version code 1 into a saved internal-testing draft and reported 19,478 compatible device models and 16 KB page support. No tester groups, invitations, or rollouts were configured. Native symbol tables for all three Android ABIs were uploaded separately after matching every loaded ELF section and address against the uploaded bundle.
 
 1. Install the Android SDK, NDK 28.2.13676358, JDK, and Rust targets `aarch64-linux-android`, `armv7-linux-androideabi`, and `x86_64-linux-android`.
 2. Run `python3 scripts/setup-android-signing.py --create` once to create a separate upload key on macOS.
