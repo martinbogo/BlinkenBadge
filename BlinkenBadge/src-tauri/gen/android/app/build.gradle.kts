@@ -14,6 +14,19 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// Keep release credentials outside the repository and never fall back to a
+// debug key. With no credentials, Gradle can still build an unsigned bundle.
+val uploadKey = listOf(
+    "BLINKENBADGE_ANDROID_KEYSTORE",
+    "BLINKENBADGE_ANDROID_KEY_ALIAS",
+    "BLINKENBADGE_ANDROID_KEYSTORE_PASSWORD",
+    "BLINKENBADGE_ANDROID_KEY_PASSWORD",
+).associateWith { providers.environmentVariable(it).orNull }
+val hasUploadKey = uploadKey.values.all { !it.isNullOrBlank() }
+require(uploadKey.values.none { !it.isNullOrBlank() } || hasUploadKey) {
+    "Set all four BLINKENBADGE_ANDROID signing variables or leave all unset."
+}
+
 android {
     compileSdk = 36
     namespace = "com.martin.blinkenbadge"
@@ -24,6 +37,16 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    signingConfigs {
+        if (hasUploadKey) {
+            create("upload") {
+                storeFile = file(requireNotNull(uploadKey["BLINKENBADGE_ANDROID_KEYSTORE"]))
+                keyAlias = uploadKey["BLINKENBADGE_ANDROID_KEY_ALIAS"]
+                storePassword = uploadKey["BLINKENBADGE_ANDROID_KEYSTORE_PASSWORD"]
+                keyPassword = uploadKey["BLINKENBADGE_ANDROID_KEY_PASSWORD"]
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -40,6 +63,9 @@ android {
             }
         }
         getByName("release") {
+            if (hasUploadKey) {
+                signingConfig = signingConfigs.getByName("upload")
+            }
             optimization {
                enable = true
             }

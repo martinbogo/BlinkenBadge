@@ -16,6 +16,7 @@
 		972830CF579B7D4836F09D41 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CB163E306688487AF4D03E09 /* UIKit.framework */; };
 		ABD0BF60FCC80FD9ED3EF3C1 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 063A9304391C8C2273CF66E6 /* main.mm */; };
 		C16DBBCFE9C09209BC04BC15 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AB84940FD791166BD04CAB77 /* Metal.framework */; };
+		C446C50BF6449AA527DD2300 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BF4174D1FACAF2D8D2CE382B /* PrivacyInfo.xcprivacy */; };
 		C720E48DDC2AA06714304692 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 854CF2FF571FCD3483646C97 /* LaunchScreen.storyboard */; };
 		DE7755DE5CC6E9DDA445A7A0 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = D18EB4B9AC42ABA84AE4B487 /* assets */; };
 		E0D8FB84F30251EC321C5E01 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = FE330DC6F440876CAD47F0D3 /* libapp.a */; };
@@ -26,6 +27,7 @@
 		063A9304391C8C2273CF66E6 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
 		076784BE3FBF9DE686FCA30C /* emoji.rs */ = {isa = PBXFileReference; path = emoji.rs; sourceTree = "<group>"; };
 		0E757AA3C4595305C1EC3A08 /* sans.rs */ = {isa = PBXFileReference; path = sans.rs; sourceTree = "<group>"; };
+		10AA764E30D1491A3C580C0A /* script.rs */ = {isa = PBXFileReference; path = script.rs; sourceTree = "<group>"; };
 		10CB8587688E9C06720C9135 /* usb.rs */ = {isa = PBXFileReference; path = usb.rs; sourceTree = "<group>"; };
 		18EFCC4637781206077026DB /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		1C6D6826669B6622952CC18E /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
@@ -35,6 +37,7 @@
 		44A3D5B14699EC2E64C51E6F /* firmware.rs */ = {isa = PBXFileReference; path = firmware.rs; sourceTree = "<group>"; };
 		5CDF6CC612E59D4C0D56E550 /* files.rs */ = {isa = PBXFileReference; path = files.rs; sourceTree = "<group>"; };
 		6B692F7B860C7D98030E217F /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		6F99CB8D5A7C7746ABDD3FB5 /* comic.rs */ = {isa = PBXFileReference; path = comic.rs; sourceTree = "<group>"; };
 		73898ADF28D8F17A38206AA4 /* serif.rs */ = {isa = PBXFileReference; path = serif.rs; sourceTree = "<group>"; };
 		74007493470AB20914FB6E0B /* file_access.rs */ = {isa = PBXFileReference; path = file_access.rs; sourceTree = "<group>"; };
 		7E5A4E8F20B313AE25D13F8B /* protocol.rs */ = {isa = PBXFileReference; path = protocol.rs; sourceTree = "<group>"; };
@@ -44,17 +47,24 @@
 		90E53A229B53D1BE0E8D00DB /* ble_android.rs */ = {isa = PBXFileReference; path = ble_android.rs; sourceTree = "<group>"; };
 		917F6894E19C5D50238081B0 /* blinkenbadge_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = blinkenbadge_iOS.entitlements; sourceTree = "<group>"; };
 		95B27A493416E1ADED72F7A1 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		A2B10722FC8CE528BB3A4B4E /* arcade.rs */ = {isa = PBXFileReference; path = arcade.rs; sourceTree = "<group>"; };
+		A76EEC9D7BFCFCBE1244382D /* outline.rs */ = {isa = PBXFileReference; path = outline.rs; sourceTree = "<group>"; };
 		AB049213E69BFE1DB741A4F0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		AB84940FD791166BD04CAB77 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		AC8A5FE8FD5F41EB9806E6B6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BC1D88018621087EE21F04EF /* blinkenbadge_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = blinkenbadge_iOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BE4388B25FDAAC6047300C58 /* terminal.rs */ = {isa = PBXFileReference; path = terminal.rs; sourceTree = "<group>"; };
+		BF4174D1FACAF2D8D2CE382B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		C5BF015C620AC76CD2B7FDC0 /* tiny.rs */ = {isa = PBXFileReference; path = tiny.rs; sourceTree = "<group>"; };
 		C9D59D5E2609E86436751BC9 /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
 		CB163E306688487AF4D03E09 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		D175676A850F49F744A1AF16 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
 		D18EB4B9AC42ABA84AE4B487 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
 		D9D800521E5F7B3918322DCA /* menu.rs */ = {isa = PBXFileReference; path = menu.rs; sourceTree = "<group>"; };
 		DE4DA7341DEC6C16996AE088 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		EB8B07BB2CF356DF5DC624A6 /* punk.rs */ = {isa = PBXFileReference; path = punk.rs; sourceTree = "<group>"; };
 		EE0BFD32A8DC3F0E610E9676 /* future.rs */ = {isa = PBXFileReference; path = future.rs; sourceTree = "<group>"; };
+		EEFB65D9A7F6A194F5CFEE12 /* stencil.rs */ = {isa = PBXFileReference; path = stencil.rs; sourceTree = "<group>"; };
 		F7995C97F1A9EF30FCB179AA /* cartoon.rs */ = {isa = PBXFileReference; path = cartoon.rs; sourceTree = "<group>"; };
 		FE330DC6F440876CAD47F0D3 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -120,6 +130,7 @@
 				D18EB4B9AC42ABA84AE4B487 /* assets */,
 				AC8A5FE8FD5F41EB9806E6B6 /* Assets.xcassets */,
 				854CF2FF571FCD3483646C97 /* LaunchScreen.storyboard */,
+				BF4174D1FACAF2D8D2CE382B /* PrivacyInfo.xcprivacy */,
 				98CE152E741DE336A3C4F1D0 /* blinkenbadge_iOS */,
 				60211A781DB2FD8C3859240C /* Externals */,
 				D7B3E51DFB8468FD9DB48437 /* Sources */,
@@ -140,12 +151,20 @@
 		7EB330D6858B9023DD3AB1C0 /* font */ = {
 			isa = PBXGroup;
 			children = (
+				A2B10722FC8CE528BB3A4B4E /* arcade.rs */,
 				F7995C97F1A9EF30FCB179AA /* cartoon.rs */,
+				6F99CB8D5A7C7746ABDD3FB5 /* comic.rs */,
 				076784BE3FBF9DE686FCA30C /* emoji.rs */,
 				EE0BFD32A8DC3F0E610E9676 /* future.rs */,
 				82A319B56DFA8917E0781637 /* mod.rs */,
+				A76EEC9D7BFCFCBE1244382D /* outline.rs */,
+				EB8B07BB2CF356DF5DC624A6 /* punk.rs */,
 				0E757AA3C4595305C1EC3A08 /* sans.rs */,
+				10AA764E30D1491A3C580C0A /* script.rs */,
 				73898ADF28D8F17A38206AA4 /* serif.rs */,
+				EEFB65D9A7F6A194F5CFEE12 /* stencil.rs */,
+				BE4388B25FDAAC6047300C58 /* terminal.rs */,
+				C5BF015C620AC76CD2B7FDC0 /* tiny.rs */,
 			);
 			path = font;
 			sourceTree = "<group>";
@@ -269,6 +288,7 @@
 			files = (
 				648685A69168DD97E54F468C /* Assets.xcassets in Resources */,
 				C720E48DDC2AA06714304692 /* LaunchScreen.storyboard in Resources */,
+				C446C50BF6449AA527DD2300 /* PrivacyInfo.xcprivacy in Resources */,
 				DE7755DE5CC6E9DDA445A7A0 /* assets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
