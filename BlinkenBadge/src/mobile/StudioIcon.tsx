@@ -1,4 +1,8 @@
 export type StudioGlyph =
+  | "send"
+  | "cut"
+  | "paste"
+  | "check"
   | "undo"
   | "redo"
   | "play"
@@ -12,6 +16,10 @@ export type StudioGlyph =
   | "expand"
   | "collapse";
 const paths: Record<StudioGlyph, string> = {
+  send: "m3 3 18 9-18 9 4-9-4-9Zm4 9h14",
+  cut: "m9 8 11 12M9 16 20 4M7 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm0 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z",
+  paste: "M9 5H5v16h14V5h-4M9 3h6v4H9V3Zm-1 9h8m-8 4h8",
+  check: "m4 12 5 5L20 6",
   undo: "M9 5 4 10l5 5M4 10h10a6 6 0 0 1 0 12",
   redo: "m15 5 5 5-5 5m5-5H10a6 6 0 0 0 0 12",
   play: "m8 4 12 8-12 8V4Z",

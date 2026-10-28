@@ -151,7 +151,7 @@ describe("mobile editing flows", () => {
     await user.click(screen.getByRole("button", { name: "+ Add" }));
     await user.click(screen.getByRole("button", { name: "Pixel Drawing" }));
     expect(screen.queryByLabelText("Animation Frames")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Send to Badge" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Send to Badge" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Canvas Options" }));
     await user.click(screen.getByRole("button", { name: "Motion" }));
     await user.selectOptions(
@@ -396,11 +396,15 @@ describe("mobile desktop feature parity", () => {
     await user.click(screen.getByRole("button", { name: "Delete Slot" }));
     expect(screen.getByText(/Delete “Animation 2” from Slot 2/)).toBeTruthy();
     expect(document.activeElement).toBe(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }),
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel",
+      }),
     );
     // Dismissing confirmation leaves all frames untouched.
     await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }),
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel",
+      }),
     );
     expect(
       screen.getByRole("button", { name: /Animation 2.*Slot 2/ }),
@@ -466,11 +470,196 @@ describe("mobile desktop feature parity", () => {
       screen.getByRole("button", { name: /Untitled Drawing/ }),
     ).toBeTruthy();
   });
+  it("sends only checked slots and locks the transfer controls until completion", async () => {
+    const user = userEvent.setup();
+    const project = await restore();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(screen.getByRole("checkbox", { name: /Send Slot 2:/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Send Slot 4:/ }));
+    expect(screen.getByText(/6 of 8 selected/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Find Badge" }));
+    await screen.findByRole("button", { name: /Test Badge/ });
+    expect(host.sendBle).not.toHaveBeenCalled();
+    let finish!: (bytes: number) => void;
+    host.sendBle.mockImplementationOnce(
+      () =>
+        new Promise<number>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await user.click(screen.getByRole("button", { name: "Send to Badge" }));
+    await waitFor(() => expect(host.sendBle).toHaveBeenCalledTimes(1));
+    const [specs] = host.sendBle.mock.calls[0] as [typeof project.messages];
+    expect(specs.map((m) => m.frames)).toEqual(
+      project.messages
+        .filter((_, i) => i !== 1 && i !== 3)
+        .map((m) => m.frames),
+    );
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: /Send Slot 1:/,
+        }) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Back to Slots",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("combobox", {
+          name: "Brightness",
+        }) as HTMLSelectElement
+      ).disabled,
+    ).toBe(true);
+    finish(128);
+    await screen.findByText("The badge accepted the transfer.");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Brightness" }),
+      "50",
+    );
+    expect(screen.queryByText("The badge accepted the transfer.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Send to Badge" })).toBeTruthy();
+  });
+  it("explains an empty badge search and supports retry without uploading", async () => {
+    const user = userEvent.setup();
+    await open();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    host.bleScan.mockResolvedValueOnce([]);
+    await user.click(screen.getByRole("button", { name: "Find Badge" }));
+    await screen.findByText(/No badge found/);
+    await user.click(screen.getByText("Connection Help"));
+    expect(
+      screen.getByText(/PIN-protected transfers are not supported/),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Send to Badge",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Find Badge" }));
+    await screen.findByRole("button", { name: /Selected for Sending/ });
+    expect(host.sendBle).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("checkbox", { name: /Send Slot 1:/ }));
+    expect(screen.getByText("Select at least one slot to send.")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Send to Badge",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+  it("makes speed editable from frame controls and sending reachable from editor and preview", async () => {
+    const user = userEvent.setup();
+    await restore();
+    await user.click(
+      screen.getByRole("button", { name: /Animation 1.*Slot 1/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Frame Options" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Playback Speed" }), {
+      target: { value: "7" },
+    });
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Frame Options" }).textContent,
+    ).toContain("Speed 7/8");
+    await user.click(screen.getByRole("button", { name: "Send to Badge" }));
+    expect(screen.getByRole("main", { name: "Prepare Transfer" })).toBeTruthy();
+    expect(host.sendBle).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Back to Slots" }));
+    await user.click(await screen.findByRole("button", { name: "Preview" }));
+    await user.click(screen.getByRole("button", { name: "Send to Badge" }));
+    await user.click(screen.getByRole("button", { name: "Find Badge" }));
+    await screen.findByRole("button", { name: /Test Badge/ });
+    await user.click(screen.getByRole("button", { name: "Send to Badge" }));
+    await screen.findByText("The badge accepted the transfer.");
+    expect(
+      (host.sendBle.mock.calls[0][0] as { speed: number }[])[0].speed,
+    ).toBe(7);
+  });
+  it("copies pixels between frames through contextual tools and preserves undo", async () => {
+    const user = userEvent.setup();
+    const project = await restore();
+    await user.click(
+      screen.getByRole("button", { name: /Animation 1.*Slot 1/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Drawing Tool" }));
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    expect(
+      (screen.getByRole("button", { name: "Copy Pixels" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Selection Options" }));
+    await user.click(screen.getByRole("button", { name: "Select All" }));
+    await user.click(screen.getByRole("button", { name: "Copy Pixels" }));
+    await screen.findByText("Copied Pixels");
+    await user.click(screen.getByRole("button", { name: "Frame 2" }));
+    await user.click(screen.getByRole("button", { name: "Paste Pixels" }));
+    const canvas = screen.getByRole("img", { name: /pixel canvas/ });
+    expect(
+      canvas.querySelector('rect[fill="var(--mobile-led)"]')?.getAttribute("x"),
+    ).toBe("114");
+    await user.click(screen.getByRole("button", { name: "Finish Selection" }));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await user.click(screen.getByRole("button", { name: "Canvas Options" }));
+    await user.click(screen.getByRole("button", { name: "Clear Frame" }));
+    expect(
+      canvas.querySelectorAll('rect[fill="var(--mobile-led)"]'),
+    ).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await user.click(screen.getByRole("button", { name: "Canvas Options" }));
+    await user.click(screen.getByRole("button", { name: "Slot Options" }));
+    await user.click(screen.getByRole("button", { name: "Export Slot" }));
+    expect(
+      parseMessage(host.exportDocument.mock.calls[0][0] as string).frames,
+    ).toEqual(project.messages[0].frames);
+  });
+  it("blocks an oversized selection and allows sending after excluding a slot", async () => {
+    const user = userEvent.setup();
+    const messages = Array.from({ length: 2 }, (_, i) => ({
+      ...newMessage("scroll_left"),
+      name: `Wide ${i + 1}`,
+      width: 4000,
+      frames: [blankFrame(4000)],
+    }));
+    host.recoveryRead.mockResolvedValue({
+      json: serializeProject({ brightness: 100, messages }),
+      path: null,
+      saved_at: "",
+    });
+    render(<MobileApp />);
+    await user.click(await screen.findByRole("button", { name: "Send" }));
+    await user.click(screen.getByRole("button", { name: "Find Badge" }));
+    await screen.findByRole("button", { name: /Test Badge/ });
+    expect(
+      screen.getByText(/This selection exceeds badge memory/),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Send to Badge",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await user.click(screen.getByRole("checkbox", { name: /Send Slot 2:/ }));
+    await user.click(screen.getByRole("button", { name: "Send to Badge" }));
+    await screen.findByText("The badge accepted the transfer.");
+    expect(host.sendBle.mock.calls[0][0]).toHaveLength(1);
+  });
   it("offers all twelve pixel fonts and renders the selected face", async () => {
     const user = userEvent.setup();
     await open();
     await user.click(screen.getByRole("button", { name: /Untitled/ }));
-    await user.click(screen.getByRole("button", { name: "Serif" }));
+    await user.click(screen.getByRole("button", { name: "Font: Serif" }));
     for (const name of [
       "Serif",
       "Sans",
@@ -512,7 +701,6 @@ describe("animation frame artwork", () => {
       ["cartoon", 1],
     ] as const) {
       await user.click(screen.getByRole("button", { name: "Canvas Options" }));
-      await user.click(screen.getByRole("button", { name: "Insert" }));
       await user.click(screen.getByRole("button", { name: "Stamp Text" }));
       await user.clear(screen.getByRole("textbox", { name: "Stamp Text" }));
       await user.type(screen.getByRole("textbox", { name: "Stamp Text" }), "A");
@@ -558,7 +746,7 @@ it("reapplies a selected font even when the saved face ID already matches", asyn
   render(<MobileApp />);
   await user.click(await screen.findByRole("button", { name: /Saved Comic/ }));
   expect(host.renderText).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "Comic" }));
+  await user.click(screen.getByRole("button", { name: "Font: Comic" }));
   await user.click(
     within(screen.getByRole("dialog")).getByRole("button", { name: "Comic" }),
   );
@@ -645,14 +833,20 @@ it("waits for text rendering before allowing a mode change", async () => {
     expect(host.renderText).toHaveBeenLastCalledWith("A", "serif"),
   );
   expect(
-    (screen.getByRole("button", { name: "Scroll left" }) as HTMLButtonElement)
-      .disabled,
+    (
+      screen.getByRole("button", {
+        name: "Motion: Scroll left",
+      }) as HTMLButtonElement
+    ).disabled,
   ).toBe(true);
   finish({ rows: blankFrame(8), width: 8, columns: 1, missing: [] });
   await waitFor(() =>
     expect(
-      (screen.getByRole("button", { name: "Scroll left" }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole("button", {
+          name: "Motion: Scroll left",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(false),
   );
 });
