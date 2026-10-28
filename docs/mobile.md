@@ -138,7 +138,9 @@ Each phone retains `QA Bounce` and `QA Bounce Copy`, with eight distinct frames 
 | Blank frame with onion guide | [Screenshot](device-tests/2026-10-28/ios-onion.png) | [Screenshot](device-tests/2026-10-28/android-onion.png) |
 | 4× Focus canvas | [Screenshot](device-tests/2026-10-28/ios-focus.png) | [Screenshot](device-tests/2026-10-28/android-focus.png) |
 
-These tests cover two animation slots per phone. Physical pinch/pan gestures, rotation, eight-slot/64-frame device stress tests, native file round-trips, and older-device coverage remain unverified. Physical badge transfer was deferred because the badge was unavailable. Onion exclusion from transmitted artwork still requires a badge check.
+These automated checks cover two animation slots per phone. Native file round-trips and older-device coverage remain unverified. Physical badge transfer was deferred because the badge was unavailable. Onion exclusion from transmitted artwork still requires a badge check.
+
+The user reported manually verifying rotation, pinch/zoom, and the full eight-slot/64-frame workflow on both phones on October 28, 2026. These checks are accepted on that basis; they were not independently completed by the agent. Before the user stopped the extended run, Android two-touch pinch changed zoom from 100% to 300%, two-touch pan preserved the saved project, and the native landscape editor displayed correctly. The temporary iPhone project change was undone, and saved-project comparisons confirmed both original drafts were restored exactly. The Android gesture helper was removed and the original automatic rotation setting was restored.
 
 ### Remaining Acceptance
 
