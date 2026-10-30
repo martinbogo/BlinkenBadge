@@ -72,7 +72,7 @@ Send explicitly prepares checked slots for a transfer; finding or selecting a ba
 | Open With / share intents | Not registered on mobile; use Import Project or Import Slot |
 | Bluetooth PIN | Unsupported, as on desktop; disable the badge PIN before sending |
 | Android transfer progress | Busy state and completion/error; per-chunk progress is not exposed yet |
-| Store releases | Separate paid listings; Android 1.0.50 build 1 active for owner-only internal testing; iOS build 1 processed |
+| Store releases | Separate paid listings; Android 1.0.50 build 1 active for internal testing; closed-test release prepared but not submitted; iOS build 1 processed |
 
 ## Compatibility Targets
 
@@ -112,6 +112,24 @@ Both store applications use `com.martin.blinkenbadge`. They are separate from th
 
 On October 28, 2026, both listings had US$1.99 saved. Apple processed version 1.0.50 build 1, and it was assigned to an internal group. Google activated version code 1 for an owner-only internal tester list and reported 19,478 compatible device models and 16 KB page support. Public distribution remains off. Native symbol tables for all three Android ABIs were uploaded separately after matching every loaded ELF section and address against the uploaded bundle.
 
+On October 30, 2026, Google internal testing included the owner and a hackerspace tester. The closed track, named Alpha in Play Console, had version 1.0.50 build 1 prepared with release name `1.0.50 (1) Closed Beta`. The release preview reported `Ready to release`. Countries, testers, release creation, and preview were complete. Review submission was held until hackerspace alpha testing finishes. Production remained inactive. Automated pre-review quick checks were still running at preparation time.
+
+| Closed Testing | Configuration |
+|---|---|
+| Enrollment group | [BlinkenBadge Beta Testers](https://groups.google.com/g/blinkenbadge-beta) |
+| Group address | `blinkenbadge-beta@googlegroups.com` |
+| Membership | Anyone on the web can join; membership lists and email addresses visible only to managers |
+| Play opt-in | <https://play.google.com/apps/testing/com.martin.blinkenbadge>; unavailable until publication |
+| Countries and regions | 173 supported paid-app markets selected |
+| Feedback | <https://github.com/martinbogo/BlinkenBadge/issues> |
+| Listing | English (United States), Art & Design, icon, feature graphic, three phone screenshots |
+| Ratings | ESRB Everyone, PEGI 3; regional ratings generated through IARC |
+| Declarations | No ads, advertising ID, data collection, or data sharing; intended audience 13 and older |
+
+For the closed beta, join the group with the same Google Account used for Google Play, then opt in using the Play link after launch. Internal testers must leave the internal test before joining the closed test. Internal testing is free; the paid closed test uses the US$1.99 price and regional equivalents. This account requires at least 12 opted-in closed testers for 14 continuous days before applying for production access. See [Google testing guidance](https://support.google.com/googleplay/android-developer/answer/9845334) and [production access requirements](https://support.google.com/googleplay/android-developer/answer/14151465).
+
+Store assets and capture details are in [store-assets/README.md](store-assets/README.md). The generated feature graphic was declared as created or edited using AI. The screenshots are unaltered captures of the shared mobile interface.
+
 1. Install the Android SDK, NDK 28.2.13676358, JDK, and Rust targets `aarch64-linux-android`, `armv7-linux-androideabi`, and `x86_64-linux-android`.
 2. Run `python3 scripts/setup-android-signing.py --create` once to create a separate upload key on macOS.
 3. Back up `~/.config/blinkenbadge/signing/upload.p12` and its Keychain credential before uploading the first bundle.
@@ -128,7 +146,7 @@ The Android helper normalizes JAR manifest/signature entry order without changin
 
 The iOS helper creates an archive, then exports an App Store Connect IPA with `src-tauri/ExportOptions.beta.plist`. The validated IPA has `get-task-allow=false`, `beta-reports-active=true`, and the bundled `PrivacyInfo.xcprivacy`. Required file-metadata reasons cover private app files and user-selected documents. The app uses operating-system encryption; `ITSAppUsesNonExemptEncryption` is false.
 
-Project > Privacy displays the notice offline. `scripts/render-privacy.py` renders `docs/privacy.html` from the same notice. The public policy URL must be hosted before completing the store privacy-policy fields. Source review found no developer-operated analytics, advertising, tracking, or project-upload service. Platform beta diagnostics and user-selected cloud exports are described separately in the notice.
+Project > Privacy displays the notice offline. `scripts/render-privacy.py` renders `docs/privacy.html` from the same notice. The [public policy](https://martinbogo.github.io/BlinkenBadge/privacy.html) is hosted by GitHub Pages from the root of the separate `codex/store-pages` branch and was verified in Chrome on October 30, 2026. Update that branch's `privacy.html` and `index.html` when publishing policy changes. The URL is saved in Play Console. Source review found no developer-operated analytics, advertising, tracking, or project-upload service. Platform beta diagnostics and user-selected cloud exports are described separately in the notice.
 
 Keep beta testing focused on editing until physical badge transfers are verified on both platforms. Native file-picker round-trips, older-device coverage, and store-side build processing remain separate acceptance checks.
 
