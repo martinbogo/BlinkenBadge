@@ -18,6 +18,7 @@ This document records repository state, architectural boundaries, hardware speci
 | Path | Purpose |
 |---|---|
 | `BlinkenBadge/` | Main application root (desktop Tauri v2 and web frontend) |
+| `BlinkenBadge/src/mobile/` | Touch shell, gesture canvas, slots, frame tools, mobile draft persistence |
 | `BlinkenBadge/src/` | React/TypeScript UI: editor canvas, timeline, preview, transport |
 | `BlinkenBadge/src/platform/` | Platform abstraction layer (`types.ts`, `tauri.ts`, `web.ts`, `wire.ts`, `webfont.ts`) |
 | `BlinkenBadge/src-tauri/` | Rust Tauri v2 core: hardware protocols, USB HID, Bluetooth LE, file operations |
@@ -66,6 +67,10 @@ export PATH="/Users/martin/.rustup/toolchains/stable-aarch64-apple-darwin/bin:$P
    npm run build:web
    ```
 
+## Mobile Development
+
+See `docs/mobile.md` for feature parity, test builds, platform differences, and acceptance checks. Preserve eight slots with up to eight animation frames per slot, onion skin, all twelve pixel fonts, selection tools, and full-sequence preview when changing mobile layouts.
+
 ## Hardware and Protocol Specifications
 
 | Parameter | Specification |
@@ -92,10 +97,10 @@ Signing and notarization run only in the macOS build step after checks and `rele
 |---|---|
 | `APPLE_CERTIFICATE` | Base64-encoded Developer ID Application `.p12` |
 | `APPLE_CERTIFICATE_PASSWORD` | Certificate password |
-| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Martin Bogomolni (859Q7F7Z7F)` |
+| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Martin Bogomolni (5QAGYV54MK)` |
 | `APPLE_ID` | Apple ID email address |
 | `APPLE_PASSWORD` | App-specific password |
-| `APPLE_TEAM_ID` | `859Q7F7Z7F` |
+| `APPLE_TEAM_ID` | `5QAGYV54MK` |
 
 Helper script: `./scripts/setup-macos-signing.sh --check`.
 

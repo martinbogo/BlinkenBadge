@@ -61,6 +61,7 @@ impl Firmware {
     /// what its own documentation tells clients to key on. So this only says
     /// that a rejected header is worth explaining rather than reporting as a
     /// generic failure. USB has no PIN on either firmware.
+    #[cfg(any(not(target_os = "android"), test))]
     pub fn ble_may_require_pin(self) -> bool {
         self == Firmware::BadgeMagic
     }
@@ -78,11 +79,13 @@ impl Default for Firmware {
 ///
 /// Matched as a prefix: USB says "FOSSASIA WAS HERE" and the Bluetooth Device
 /// Information Service says "FOSSASIA", and neither is worth pinning exactly.
+#[cfg(any(not(target_os = "android"), test))]
 const VENDOR: &str = "FOSSASIA";
 
 /// Secondary marks, for a fork that rewrites the vendor string but keeps the
 /// rest. "BM1144" is the model number, which appears in the USB serial
 /// descriptor and in the Bluetooth model characteristic.
+#[cfg(any(not(target_os = "android"), test))]
 const MARKS: [&str; 2] = ["BADGE MAGIC", "BM1144"];
 
 /// Identify from whatever strings a transport managed to read.
@@ -91,6 +94,7 @@ const MARKS: [&str; 2] = ["BADGE MAGIC", "BM1144"];
 /// is missing on some hosts unless the device can be opened, and on Linux that
 /// needs the udev rule, so keying on a single field would make detection
 /// depend on permissions.
+#[cfg(any(not(target_os = "android"), test))]
 pub fn identify<'a>(fields: impl IntoIterator<Item = Option<&'a str>>) -> Firmware {
     for field in fields.into_iter().flatten() {
         let up = field.to_ascii_uppercase();

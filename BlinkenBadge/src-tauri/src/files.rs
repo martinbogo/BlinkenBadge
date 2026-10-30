@@ -303,3 +303,127 @@ pub fn grant_native(app: &AppHandle, path: &str) -> Result<String, String> {
         .display()
         .to_string())
 }
+
+/// Only picker-selected resources enter the mobile import/export paths.
+#[tauri::command]
+pub async fn mobile_import(app: AppHandle, kind: String) -> Result<Option<String>, String> {
+    use std::io::Read;
+    use tauri_plugin_fs::{FsExt, OpenOptions};
+    DocumentKind::parse(&kind)?;
+    let (label, extensions) = describe(&kind);
+    let selected = app
+        .dialog()
+        .file()
+        .add_filter(label, &extensions)
+        .blocking_pick_file();
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let result = (|| {
+        let mut options = OpenOptions::new();
+        options.read(true);
+        let file = app
+            .fs()
+            .open(selected.clone(), options)
+            .map_err(|e| e.to_string())?;
+        let mut bytes = Vec::new();
+        file.take((MAX_DOCUMENT_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() > MAX_DOCUMENT_BYTES {
+            return Err("Project exceeds the 8 MiB limit.".into());
+        }
+        String::from_utf8(bytes)
+            .map(Some)
+            .map_err(|_| "Project is not UTF-8 text.".into())
+    })();
+    #[cfg(target_os = "ios")]
+    let _ = app.fs().stop_accessing_security_scoped_resource(selected);
+    result
+}
+
+#[tauri::command]
+pub async fn mobile_export(app: AppHandle, json: String, kind: String) -> Result<bool, String> {
+    use std::io::Write;
+    use tauri_plugin_fs::{FsExt, OpenOptions};
+    DocumentKind::parse(&kind)?;
+    let (label, extensions) = describe(&kind);
+    if json.len() > MAX_DOCUMENT_BYTES {
+        return Err("Project exceeds the 8 MiB limit.".into());
+    }
+    let selected = app
+        .dialog()
+        .file()
+        .set_file_name(format!("BlinkenBadge.{}", extensions[0]))
+        .add_filter(label, &extensions)
+        .blocking_save_file();
+    let Some(selected) = selected else {
+        return Ok(false);
+    };
+    let result = (|| {
+        let mut options = OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        let mut file = app
+            .fs()
+            .open(selected.clone(), options)
+            .map_err(|e| e.to_string())?;
+        file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
+        // Android document providers may return a pipe instead of a seekable file.
+        file.flush().map_err(|e| e.to_string())?;
+        Ok(true)
+    })();
+    #[cfg(target_os = "ios")]
+    let _ = app.fs().stop_accessing_security_scoped_resource(selected);
+    result
+}
+
+/// Content URIs and iOS security-scoped URLs must be opened through the native FS plugin.
+#[cfg(mobile)]
+pub async fn mobile_image(app: AppHandle) -> Result<Option<String>, String> {
+    use base64::Engine;
+    use std::io::Read;
+    use tauri_plugin_fs::{FsExt, OpenOptions};
+    let selected = app
+        .dialog()
+        .file()
+        .add_filter("Image", &["png", "gif", "bmp", "jpg", "jpeg", "webp"])
+        .blocking_pick_file();
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let result = (|| {
+        let mut options = OpenOptions::new();
+        options.read(true);
+        let file = app
+            .fs()
+            .open(selected.clone(), options)
+            .map_err(|e| e.to_string())?;
+        let mut bytes = Vec::new();
+        file.take((crate::file_access::MAX_IMAGE_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() > crate::file_access::MAX_IMAGE_BYTES {
+            return Err("Image exceeds the 16 MiB limit.".into());
+        }
+        let mime = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+            "image/png"
+        } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+            "image/gif"
+        } else if bytes.starts_with(b"BM") {
+            "image/bmp"
+        } else if bytes.starts_with(b"\xff\xd8\xff") {
+            "image/jpeg"
+        } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+            "image/webp"
+        } else {
+            return Err("Select a PNG, GIF, BMP, JPEG, or WebP image.".into());
+        };
+        Ok(Some(format!(
+            "data:{mime};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        )))
+    })();
+    #[cfg(target_os = "ios")]
+    let _ = app.fs().stop_accessing_security_scoped_resource(selected);
+    result
+}

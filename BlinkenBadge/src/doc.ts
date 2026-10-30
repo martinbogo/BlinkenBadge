@@ -78,6 +78,7 @@ interface StoredMessage {
   ants?: boolean;
   /** Omitted when true, which is the overwhelmingly common case. */
   enabled?: boolean;
+  text?: { value: string; face: string };
 }
 
 interface ProjectFile {
@@ -111,6 +112,7 @@ function storeMessage(m: Message): StoredMessage {
   if (m.blink) out.blink = true;
   if (m.ants) out.ants = true;
   if (m.enabled === false) out.enabled = false;
+  if (m.text) out.text = { ...m.text };
   return out;
 }
 
@@ -243,6 +245,13 @@ function readMessage(raw: unknown, index: number): Message {
     // Absent in documents written before slots could be switched off, and a
     // slot nobody disabled is an enabled one.
     enabled: m.enabled === undefined ? true : Boolean(m.enabled),
+    ...(m.text &&
+    typeof m.text.value === "string" &&
+    m.text.value.length <= 65536 &&
+    typeof m.text.face === "string" &&
+    m.text.face.length <= 80
+      ? { text: { value: m.text.value, face: m.text.face } }
+      : {}),
   };
 }
 

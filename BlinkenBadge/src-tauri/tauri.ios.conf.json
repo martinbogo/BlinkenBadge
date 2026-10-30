@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "iOS": {
+      "minimumSystemVersion": "15.0",
+      "frameworks": [
+        "CoreBluetooth"
+      ]
+    },
+    "fileAssociations": []
+  },
+  "build": {
+    "frontendDist": "../dist-ios",
+    "beforeBuildCommand": "npm run build:ios"
+  }
+}

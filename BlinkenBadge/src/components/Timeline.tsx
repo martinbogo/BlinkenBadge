@@ -47,10 +47,11 @@ function Thumb({ frame, led }: { frame: Frame; led: LedColor }) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#10131a";
     ctx.fillRect(0, 0, w, BADGE_HEIGHT);
-    ctx.fillStyle = ledPalette(led).on;
+    const ink = ledPalette(led).on;
     for (let y = 0; y < BADGE_HEIGHT; y++) {
       for (let x = 0; x < w; x++) {
-        if (frame[y]?.[x]) ctx.fillRect(x, y, 1, 1);
+        ctx.fillStyle = frame[y]?.[x] ? ink : "#293445";
+        ctx.fillRect(x + 0.12, y + 0.12, 0.76, 0.76);
       }
     }
   }, [frame, led]);

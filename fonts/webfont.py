@@ -33,7 +33,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 OUT = HERE.parent / "web" / "fonts.json"
 
 # Fallback order, mirroring FACES in BlinkenBadge/src-tauri/src/font/mod.rs.
-ORDER = ["serif", "sans", "cartoon", "future", "emoji"]
+ORDER = ["serif", "sans", "cartoon", "future", "comic", "arcade", "terminal", "stencil", "outline", "tiny", "punk", "script", "emoji"]
 
 
 def main():
