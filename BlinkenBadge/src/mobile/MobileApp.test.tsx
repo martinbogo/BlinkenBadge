@@ -19,14 +19,16 @@ import { parseMessage, parseProject, serializeProject } from "../doc";
 const host = vi.hoisted(() => ({
   recoveryRead: vi.fn(async (): Promise<Recovery | null> => null),
   recoveryWrite: vi.fn(async () => {}),
-  renderText: vi.fn(async (text: string): Promise<TextBitmap> => ({
-    width: 44,
-    columns: 6,
-    missing: [],
-    rows: Array.from({ length: 11 }, (_, y) =>
-      Array.from({ length: 44 }, (_, x) => y === 0 && x < text.length),
-    ),
-  })),
+  renderText: vi.fn(
+    async (text: string): Promise<TextBitmap> => ({
+      width: 44,
+      columns: 6,
+      missing: [],
+      rows: Array.from({ length: 11 }, (_, y) =>
+        Array.from({ length: 44 }, (_, x) => y === 0 && x < text.length),
+      ),
+    }),
+  ),
   onSendProgress: vi.fn(() => () => {}),
   bleScan: vi.fn(async () => [
     { id: "badge-1", name: "Test Badge", rssi: -40, services: [] },
@@ -886,4 +888,115 @@ it("waits for text rendering before allowing a mode change", async () => {
       ).disabled,
     ).toBe(false),
   );
+});
+
+describe("tablet studio layout", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "matchMedia",
+      (query: string) =>
+        ({
+          matches: true,
+          media: query,
+          addEventListener() {},
+          removeEventListener() {},
+        }) as unknown as MediaQueryList,
+    );
+  });
+  const textSlot = (value: string) => ({
+    ...newMessage(),
+    name: value,
+    text: { value, face: "serif" },
+  });
+  const restoreTexts = async (...values: string[]) => {
+    host.recoveryRead.mockResolvedValue({
+      json: serializeProject({
+        brightness: 75,
+        messages: values.map(textSlot),
+      }),
+      path: null,
+      saved_at: "",
+    });
+    render(<MobileApp />);
+    await screen.findByRole("complementary", { name: "Badge Slots" });
+  };
+  const lastSaved = () =>
+    parseProject(
+      (
+        host.recoveryWrite.mock.calls[
+          host.recoveryWrite.mock.calls.length - 1
+        ] as unknown as [string]
+      )[0],
+    );
+
+  it("keeps the slot list beside the editor and opens the first slot directly", async () => {
+    const user = userEvent.setup();
+    render(<MobileApp />);
+    const slots = await screen.findByRole("complementary", {
+      name: "Badge Slots",
+    });
+    expect(screen.queryByRole("heading", { name: "Badge Slots" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Back to Slots" })).toBeNull();
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "HELLO");
+    await waitFor(() =>
+      expect(within(slots).getByRole("button", { name: /HELLO/ })).toBeTruthy(),
+    );
+    await user.click(within(slots).getByRole("button", { name: "Add Slot" }));
+    await user.click(screen.getByRole("button", { name: "Pixel Drawing" }));
+    const tools = await screen.findByRole("toolbar", { name: "Drawing Tools" });
+    await user.click(within(tools).getByRole("button", { name: "Erase" }));
+    expect(
+      within(tools)
+        .getByRole("button", { name: "Erase" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await user.click(within(slots).getByRole("button", { name: /HELLO/ }));
+    expect(
+      (screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement)
+        .value,
+    ).toBe("HELLO");
+    await waitFor(() => expect(host.recoveryWrite).toHaveBeenCalled());
+    const saved = lastSaved().messages;
+    expect(saved.map((m) => m.text?.value)).toEqual(["HELLO", undefined]);
+  });
+
+  it("switches between text slots without carrying one slot's text into another", async () => {
+    const user = userEvent.setup();
+    await restoreTexts("FIRST", "SECOND");
+    const slots = screen.getByRole("complementary", { name: "Badge Slots" });
+    const message = () =>
+      (screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement)
+        .value;
+    expect(message()).toBe("FIRST");
+    await user.click(within(slots).getByRole("button", { name: /SECOND/ }));
+    expect(message()).toBe("SECOND");
+    await user.click(screen.getByRole("button", { name: "Slot Options" }));
+    await user.click(screen.getByRole("button", { name: "Delete Slot" }));
+    await user.click(screen.getByRole("button", { name: "Delete Slot" }));
+    await waitFor(() => expect(message()).toBe("FIRST"));
+    await new Promise((r) => setTimeout(r, 250));
+    expect(host.renderText).not.toHaveBeenCalledWith("SECOND", "serif");
+    await waitFor(() =>
+      expect(lastSaved().messages.map((m) => m.text?.value)).toEqual(["FIRST"]),
+    );
+  });
+
+  it("returns from Preview to the slot that was being edited", async () => {
+    const user = userEvent.setup();
+    await restoreTexts("FIRST", "SECOND");
+    const slots = screen.getByRole("complementary", { name: "Badge Slots" });
+    await user.click(within(slots).getByRole("button", { name: /SECOND/ }));
+    await user.click(screen.getByRole("button", { name: "Preview All" }));
+    expect(screen.getByRole("region", { name: "Preview" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Message",
+          }) as HTMLTextAreaElement
+        ).value,
+      ).toBe("SECOND"),
+    );
+  });
 });
