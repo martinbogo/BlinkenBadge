@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Brightness, Message } from "../types";
 import { ANIMATION_MAX_FRAMES } from "../types";
 import MobileCanvas, {
@@ -36,6 +36,8 @@ interface Props {
   redo(): void;
   canUndo: boolean;
   canRedo: boolean;
+  /** Tools kept in view above the canvas where the screen has room for them. */
+  rail?: ReactNode;
   canvas: Omit<
     MobileCanvasProps,
     "frame" | "onionFrame" | "disabled" | "viewRequest" | "onZoomChange"
@@ -268,6 +270,7 @@ export default function DrawingWorkspace(p: Props) {
           </>
         )}
       </div>
+      {!p.focus && p.rail}
       <main className="studio-canvas">
         <MobileCanvas
           {...p.canvas}

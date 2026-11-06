@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { platform } from "../platform";
 import type { Progress } from "../platform";
 import {
@@ -56,6 +62,7 @@ import type { MobileTool } from "./MobileCanvas";
 import Sheet from "./Sheet";
 import DrawingWorkspace from "./DrawingWorkspace";
 import StudioIcon from "./StudioIcon";
+import { useWideLayout } from "./useWideLayout";
 import SendWorkspace from "./SendWorkspace";
 import PrivacyNotice from "./PrivacyNotice";
 import "../App.css";
@@ -84,10 +91,34 @@ type Panel =
   | "convert"
   | null;
 
+const TOOL_CHOICES = [
+  ["pencil", "Draw"],
+  ["eraser", "Erase"],
+  ["fill", "Fill"],
+  ["line", "Line"],
+  ["rect", "Rectangle"],
+  ["ellipse", "Ellipse"],
+  ["select", "Select"],
+  ["pan", "Move Canvas"],
+] as const;
+const RAIL_LABELS: Record<MobileTool, string> = {
+  pencil: "Draw",
+  eraser: "Erase",
+  fill: "Fill",
+  line: "Line",
+  rect: "Box",
+  ellipse: "Oval",
+  select: "Select",
+  pan: "Move",
+};
+const slotKind = (m: Message) =>
+  m.text ? "Text" : m.mode === "animation" ? "Animation" : "Drawing";
+
 export default function MobileApp() {
   const editor = useMobileProject();
   const { project, commit, replace, ready, saveState, error, setError, flush } =
     editor;
+  const wide = useWideLayout();
   const [route, setRoute] = useState<Route>("project");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
@@ -148,6 +179,9 @@ export default function MobileApp() {
     project.messages.find((m) => m.id === selectedId) ?? project.messages[0];
   const frame = active.frames[Math.min(frameIndex, active.frames.length - 1)];
   const navigationDepth = useRef(0);
+  // The slot whose text the draft holds, so the studio layout reloads the
+  // draft when the selection moves without go(), such as after a delete.
+  const draftFor = useRef<string | null>(null);
   const routeRef = useRef(route);
   routeRef.current = route;
   const busyRef = useRef(false);
@@ -204,7 +238,11 @@ export default function MobileApp() {
       window.removeEventListener("popstate", back);
     };
   }, [setError]);
-  const go = (next: Route, message = active) => {
+  const go = (
+    next: Route,
+    message = active,
+    previewScope?: "slot" | "sequence",
+  ) => {
     forceTextRender.current = false;
     setDrawingFocus(false);
     if (next === "project" && navigationDepth.current > 0) {
@@ -216,7 +254,7 @@ export default function MobileApp() {
     }
     if (next === "preview")
       setPreviewStart({
-        scope: route === "project" ? "sequence" : "slot",
+        scope: previewScope ?? (route === "project" ? "sequence" : "slot"),
         step: route === "draw" && active.mode === "animation" ? frameIndex : 0,
       });
     setPanel(null);
@@ -227,10 +265,21 @@ export default function MobileApp() {
       setSelectedId(message.id);
       setDraft(message.text?.value ?? "");
       setFace(message.text?.face ?? "serif");
+      draftFor.current = message.id;
     }
     setFrameIndex(0);
     setSelection(null);
-    if (next !== route) {
+    if (
+      wide &&
+      (next === "text" || next === "draw") &&
+      (route === "project" || route === "text" || route === "draw")
+    ) {
+      // Beside the slot list, switching slots is selection, not navigation.
+      history.replaceState(
+        { mobileRoute: next, mobileDepth: navigationDepth.current },
+        "",
+      );
+    } else if (next !== route) {
       navigationDepth.current++;
       history.pushState(
         { mobileRoute: next, mobileDepth: navigationDepth.current },
@@ -253,6 +302,30 @@ export default function MobileApp() {
     },
     [commit],
   );
+
+  // Beside the slot list there is no slot overview to return to: the editor
+  // always shows the selected slot, in the editor its content needs.
+  const activeIsText = !!active.text;
+  useLayoutEffect(() => {
+    if (!wide || !ready) return;
+    if (route !== "project" && route !== "text" && route !== "draw") return;
+    const want: Route = activeIsText ? "text" : "draw";
+    if (route === want && draftFor.current === active.id) return;
+    setDraft(active.text?.value ?? "");
+    setFace(active.text?.face ?? "serif");
+    draftFor.current = active.id;
+    if (route !== want) {
+      setPlaying(false);
+      setFrameIndex(0);
+      setSelection(null);
+      history.replaceState(
+        { mobileRoute: want, mobileDepth: navigationDepth.current },
+        "",
+      );
+      setRoute(want);
+    }
+    // active.text is read for its value only when the slot or its kind changes.
+  }, [wide, ready, route, active.id, activeIsText]);
 
   // Rendering only replaces editable text. Imported pixel artwork is never inferred as text.
   useEffect(() => {
@@ -697,9 +770,265 @@ export default function MobileApp() {
       go("project");
     }
   };
+  const workspace = (
+    <>
+      {route === "text" && (
+        <main className="mobile-content mobile-compose">
+          <div className="mobile-preview-panel">
+            <MiniBadge
+              message={active}
+              step={playing ? step : undefined}
+              playing={playing}
+              brightness={project.brightness}
+            />
+            <div className="mobile-preview-actions">
+              <button
+                className="mobile-preview-play"
+                aria-label={playing ? "Pause Preview" : "Play Preview"}
+                onClick={() => {
+                  setPlaying((p) => !p);
+                  setStep(0);
+                }}
+              >
+                {playing ? "Pause" : "Play"}
+              </button>
+              <button
+                className="mobile-text-send"
+                disabled={rendering}
+                onClick={sendScreen}
+              >
+                Send to Badge
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="mobile-input-label" htmlFor="mobile-message-text">
+              Message
+            </label>
+            <textarea
+              id="mobile-message-text"
+              rows={3}
+              value={draft}
+              maxLength={8192}
+              onChange={(e) => {
+                setDraft(fitText(e.target.value, textBudget, face));
+                setRendering(true);
+              }}
+              spellCheck={false}
+              autoCapitalize="off"
+            />
+          </div>
+          <div className="mobile-text-options">
+            <button
+              aria-label={`Font: ${fonts.find((f) => f.id === face)?.name ?? "Choose"}`}
+              disabled={rendering}
+              onClick={() => setPanel("font")}
+            >
+              <small>Font</small>
+              <span>{fonts.find((f) => f.id === face)?.name ?? "Choose"}</span>
+            </button>
+            <button
+              disabled={rendering}
+              onClick={() => setPanel("motion")}
+              aria-label={`Motion: ${MODE_LABELS[active.mode]}`}
+            >
+              <small>Motion</small>
+              <span>{MODE_LABELS[active.mode]}</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowEmoji((v) => !v);
+              }}
+            >
+              Pictographs
+            </button>
+            {!wide && (
+              <button
+                aria-label="Slot Options"
+                disabled={rendering}
+                onClick={() => setPanel("message")}
+              >
+                •••
+              </button>
+            )}
+          </div>
+          {showEmoji && (
+            <EmojiPalette
+              chars={pictographs()}
+              led={led}
+              onPick={(c) => {
+                setDraft((t) => fitText(t + c, textBudget, face));
+                setRendering(true);
+              }}
+            />
+          )}
+          <span>
+            {measureText(draft, face)} / {textBudget} px
+          </span>
+          <span className="mobile-render-status" role="status">
+            {rendering ? "Updating Preview" : ""}
+          </span>
+        </main>
+      )}
+      {route === "draw" && (
+        <DrawingWorkspace
+          key={active.id}
+          message={active}
+          current={frameIndex}
+          playing={playing}
+          step={step}
+          brightness={project.brightness}
+          focus={drawingFocus}
+          onFocus={setDrawingFocus}
+          onion={onion}
+          onOnion={setOnion}
+          onPlay={toggleDrawingPlayback}
+          onSelect={selectFrame}
+          onDuplicate={duplicateFrame}
+          onBlank={addBlankFrame}
+          onFrames={() => {
+            pauseFrame();
+            setPanel("frames");
+          }}
+          onTools={() => {
+            pauseFrame();
+            setPanel("tool");
+          }}
+          onSend={sendScreen}
+          onCopy={() => copySelection()}
+          onCut={() => copySelection(true)}
+          onPaste={pasteSelection}
+          hasClipboard={!!clipboard}
+          onSelectionTools={() => {
+            pauseFrame();
+            setPanel("selection");
+          }}
+          onSelectionDone={() => {
+            setSelection(null);
+            setTool("pencil");
+          }}
+          onMore={() => {
+            pauseFrame();
+            setPanel("canvas");
+          }}
+          rail={
+            wide ? (
+              <div
+                className="studio-tool-rail"
+                role="toolbar"
+                aria-label="Drawing Tools"
+              >
+                {TOOL_CHOICES.map(([id]) => (
+                  <button
+                    key={id}
+                    aria-pressed={tool === id}
+                    disabled={playing}
+                    onClick={() => setTool(id)}
+                  >
+                    {RAIL_LABELS[id]}
+                  </button>
+                ))}
+                <div
+                  className="studio-rail-group"
+                  role="group"
+                  aria-label="Brush Size"
+                >
+                  {[1, 2, 3].map((n) => (
+                    <button
+                      key={n}
+                      aria-label={`Brush Size ${n} px`}
+                      aria-pressed={brushSize === n}
+                      onClick={() => setBrushSize(n)}
+                    >
+                      {n}px
+                    </button>
+                  ))}
+                </div>
+                <button
+                  aria-pressed={filled}
+                  onClick={() => setFilled((f) => !f)}
+                >
+                  Filled
+                </button>
+              </div>
+            ) : undefined
+          }
+          undo={editor.undo}
+          redo={editor.redo}
+          canUndo={editor.canUndo && !playing}
+          canRedo={editor.canRedo && !playing}
+          canvas={{
+            tool,
+            brushSize,
+            filled,
+            selection,
+            onSelectionChange: setSelection,
+            onChange: (next, record) => {
+              if (!playing)
+                update(
+                  active.id,
+                  (m) => ({
+                    ...m,
+                    text: undefined,
+                    frames: m.frames.map((f, i) =>
+                      i === frameIndex ? next : f,
+                    ),
+                  }),
+                  record,
+                );
+            },
+          }}
+        />
+      )}
+      {route === "preview" && (
+        <MobilePreview
+          project={project}
+          selectedId={active.id}
+          initialScope={previewStart.scope}
+          initialStep={previewStart.step}
+          onSend={sendScreen}
+          onEdit={(message, frame) => {
+            go(message.text ? "text" : "draw", message);
+            setFrameIndex(frame);
+          }}
+        />
+      )}
+      {route === "send" && (
+        <SendWorkspace
+          project={project}
+          badges={badges}
+          badgeId={badgeId}
+          busy={busy}
+          progress={progress}
+          status={status}
+          sent={sent}
+          usedColumns={usedColumns}
+          onScan={() => void scan()}
+          onSend={() => void send()}
+          onChoose={(id) => {
+            setBadgeId(id);
+            setStatus(null);
+            setSent(false);
+          }}
+          onEnabled={(id, enabled) => {
+            update(id, (m) => ({ ...m, enabled }));
+            setSent(false);
+            setStatus(null);
+          }}
+          onBrightness={(brightness) => {
+            commit((p) => ({ ...p, brightness }));
+            setSent(false);
+            setStatus(null);
+          }}
+          onDone={done}
+        />
+      )}
+    </>
+  );
   return (
     <div
       className="mobile-app"
+      data-layout={wide ? "wide" : undefined}
       data-drawing-focus={route === "draw" && drawingFocus ? "true" : undefined}
       ref={root}
       style={
@@ -711,71 +1040,120 @@ export default function MobileApp() {
     >
       <div className="mobile-screen">
         <header className="mobile-header">
-          {route !== "project" && (
-            <button
-              className="mobile-back"
-              aria-label="Back to Slots"
-              disabled={disabled}
-              onClick={done}
-            >
-              ‹
-            </button>
-          )}
-          <div
-            className={
-              route === "project"
-                ? "mobile-project-title"
-                : "mobile-editor-title"
-            }
-          >
-            <h1>
-              {route === "project"
-                ? "Badge Slots"
-                : route === "preview"
-                  ? "Preview"
-                  : route === "send"
-                    ? "Send to Badge"
-                    : active.name}
-            </h1>
-            {route === "project" && (
-              <span role="status">
-                {project.messages.length} of {MAX_MESSAGES} Slots · {saveState}
-              </span>
-            )}
-          </div>
-          {route === "project" ? (
-            <button
-              className="studio-labeled"
-              aria-label="Project Options"
-              disabled={disabled}
-              onClick={() => setPanel("project")}
-            >
-              <StudioIcon name="more" />
-              <small>Menu</small>
-            </button>
-          ) : route === "draw" ? (
-            <div className="studio-header-history">
-              <button
-                aria-label="Undo"
-                disabled={!editor.canUndo || playing}
-                onClick={editor.undo}
-              >
-                <StudioIcon name="undo" />
-              </button>
-              <button
-                aria-label="Redo"
-                disabled={!editor.canRedo || playing}
-                onClick={editor.redo}
-              >
-                <StudioIcon name="redo" />
-              </button>
-            </div>
-          ) : route !== "send" ? (
-            <button disabled={disabled} onClick={done}>
-              Done
-            </button>
+          {wide ? (
+            <>
+              <div className="studio-brand">
+                <span className="studio-led-dot" aria-hidden="true" />
+                <h1>BlinkenBadge</h1>
+                <span role="status">{saveState}</span>
+              </div>
+              {(route === "preview" || route === "send") && (
+                <h2 className="studio-route-title">
+                  {route === "preview" ? "Preview" : "Send to Badge"}
+                </h2>
+              )}
+              <div className="studio-header-actions">
+                {(route === "preview" || route === "send") && (
+                  <button disabled={disabled} onClick={done}>
+                    Done
+                  </button>
+                )}
+                <button
+                  aria-label="Undo"
+                  disabled={!editor.canUndo || playing || disabled}
+                  onClick={editor.undo}
+                >
+                  <StudioIcon name="undo" />
+                  <span>Undo</span>
+                </button>
+                <button
+                  aria-label="Redo"
+                  disabled={!editor.canRedo || playing || disabled}
+                  onClick={editor.redo}
+                >
+                  <StudioIcon name="redo" />
+                  <span>Redo</span>
+                </button>
+                <button
+                  aria-label="Project Options"
+                  disabled={disabled}
+                  onClick={() => setPanel("project")}
+                >
+                  <StudioIcon name="more" />
+                  <span>Project</span>
+                </button>
+              </div>
+            </>
           ) : (
-            <span className="mobile-header-spacer" />
+            <>
+              {route !== "project" && (
+                <button
+                  className="mobile-back"
+                  aria-label="Back to Slots"
+                  disabled={disabled}
+                  onClick={done}
+                >
+                  ‹
+                </button>
+              )}
+              <div
+                className={
+                  route === "project"
+                    ? "mobile-project-title"
+                    : "mobile-editor-title"
+                }
+              >
+                <h1>
+                  {route === "project"
+                    ? "Badge Slots"
+                    : route === "preview"
+                      ? "Preview"
+                      : route === "send"
+                        ? "Send to Badge"
+                        : active.name}
+                </h1>
+                {route === "project" && (
+                  <span role="status">
+                    {project.messages.length} of {MAX_MESSAGES} Slots ·{" "}
+                    {saveState}
+                  </span>
+                )}
+              </div>
+              {route === "project" ? (
+                <button
+                  className="studio-labeled"
+                  aria-label="Project Options"
+                  disabled={disabled}
+                  onClick={() => setPanel("project")}
+                >
+                  <StudioIcon name="more" />
+                  <small>Menu</small>
+                </button>
+              ) : route === "draw" ? (
+                <div className="studio-header-history">
+                  <button
+                    aria-label="Undo"
+                    disabled={!editor.canUndo || playing}
+                    onClick={editor.undo}
+                  >
+                    <StudioIcon name="undo" />
+                  </button>
+                  <button
+                    aria-label="Redo"
+                    disabled={!editor.canRedo || playing}
+                    onClick={editor.redo}
+                  >
+                    <StudioIcon name="redo" />
+                  </button>
+                </div>
+              ) : route !== "send" ? (
+                <button disabled={disabled} onClick={done}>
+                  Done
+                </button>
+              ) : (
+                <span className="mobile-header-spacer" />
+              )}
+            </>
           )}
         </header>
         {error && (
@@ -790,6 +1168,152 @@ export default function MobileApp() {
           <main className="mobile-content" role="status">
             Opening your draft...
           </main>
+        ) : wide ? (
+          <>
+            <div className="studio-shell">
+              <aside className="studio-sidebar" aria-label="Badge Slots">
+                <div className="studio-sidebar-heading">
+                  <h2>Slots</h2>
+                  <span>
+                    {project.messages.length} / {MAX_MESSAGES}
+                  </span>
+                </div>
+                <ol className="studio-slot-list">
+                  {project.messages.map((m, index) => (
+                    <li
+                      key={m.id}
+                      className="studio-slot-row"
+                      data-selected={m.id === active.id ? "true" : undefined}
+                      data-off={m.enabled === false ? "true" : undefined}
+                    >
+                      <button
+                        className="studio-slot-select"
+                        aria-current={m.id === active.id ? "true" : undefined}
+                        disabled={!!busy || rendering}
+                        onClick={() => {
+                          if (
+                            m.id !== active.id ||
+                            (route !== "text" && route !== "draw")
+                          )
+                            go(m.text ? "text" : "draw", m);
+                        }}
+                      >
+                        <span className="studio-slot-number">{index + 1}</span>
+                        <span className="studio-slot-text">
+                          <strong>{m.name}</strong>
+                          <small>
+                            {slotKind(m)}
+                            {m.enabled === false ? " · Off" : ""}
+                          </small>
+                        </span>
+                        <MiniBadge
+                          message={m}
+                          brightness={project.brightness}
+                        />
+                      </button>
+                      <button
+                        className="studio-slot-menu"
+                        aria-label={`Slot ${index + 1} Options`}
+                        disabled={!!busy}
+                        onClick={() => {
+                          setSelectedId(m.id);
+                          setPanel("message");
+                        }}
+                      >
+                        <StudioIcon name="more" />
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+                <button
+                  className="studio-add-slot"
+                  disabled={disabled || project.messages.length >= MAX_MESSAGES}
+                  onClick={() => setPanel("add")}
+                >
+                  <StudioIcon name="plus" />
+                  Add Slot
+                </button>
+              </aside>
+              <section
+                className="studio-main"
+                data-route={route}
+                aria-label={
+                  route === "preview"
+                    ? "Preview"
+                    : route === "send"
+                      ? "Send to Badge"
+                      : `Slot ${project.messages.indexOf(active) + 1}`
+                }
+              >
+                {(route === "text" || route === "draw") && (
+                  <div className="studio-pane-title">
+                    <div>
+                      <h2>{active.name}</h2>
+                      <span>
+                        Slot {project.messages.indexOf(active) + 1} ·{" "}
+                        {slotKind(active)} · {MODE_LABELS[active.mode]}
+                      </span>
+                    </div>
+                    {route === "draw" && (
+                      <button
+                        disabled={disabled}
+                        onClick={() => setPanel("motion")}
+                      >
+                        Motion
+                      </button>
+                    )}
+                    <button
+                      aria-label="Slot Options"
+                      disabled={disabled}
+                      onClick={() => setPanel("message")}
+                    >
+                      Slot Options
+                    </button>
+                  </div>
+                )}
+                {workspace}
+              </section>
+            </div>
+            <footer className="studio-statusbar">
+              <div
+                className="studio-capacity"
+                title={`${usedColumns} of ${MAX_BYTE_COLUMNS} byte columns used.`}
+                data-full={usedColumns > MAX_BYTE_COLUMNS ? "true" : undefined}
+              >
+                <span>
+                  Badge Memory{" "}
+                  {Math.round((usedColumns / MAX_BYTE_COLUMNS) * 100)}%
+                </span>
+                <progress
+                  aria-label="Badge Memory Used"
+                  max={MAX_BYTE_COLUMNS}
+                  value={Math.min(usedColumns, MAX_BYTE_COLUMNS)}
+                />
+              </div>
+              <button
+                className="studio-led-choice"
+                aria-label={`LED Color: ${led[0].toUpperCase() + led.slice(1)}`}
+                onClick={() => setPanel("color")}
+              >
+                <span className="studio-led-dot" aria-hidden="true" />
+                {led[0].toUpperCase() + led.slice(1)}
+              </button>
+              <button
+                disabled={disabled}
+                onClick={() => go("preview", active, "sequence")}
+              >
+                Preview All
+              </button>
+              <button
+                className="mobile-primary"
+                disabled={disabled}
+                onClick={sendScreen}
+              >
+                <StudioIcon name="send" />
+                Send to Badge
+              </button>
+            </footer>
+          </>
         ) : (
           <>
             {route === "project" && (
@@ -865,218 +1389,7 @@ export default function MobileApp() {
                 </footer>
               </>
             )}
-            {route === "text" && (
-              <main className="mobile-content mobile-compose">
-                <div className="mobile-preview-panel">
-                  <MiniBadge
-                    message={active}
-                    step={playing ? step : undefined}
-                    playing={playing}
-                    brightness={project.brightness}
-                  />
-                  <div className="mobile-preview-actions">
-                    <button
-                      className="mobile-preview-play"
-                      aria-label={playing ? "Pause Preview" : "Play Preview"}
-                      onClick={() => {
-                        setPlaying((p) => !p);
-                        setStep(0);
-                      }}
-                    >
-                      {playing ? "Pause" : "Play"}
-                    </button>
-                    <button
-                      className="mobile-text-send"
-                      disabled={rendering}
-                      onClick={sendScreen}
-                    >
-                      Send to Badge
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label
-                    className="mobile-input-label"
-                    htmlFor="mobile-message-text"
-                  >
-                    Message
-                  </label>
-                  <textarea
-                    id="mobile-message-text"
-                    rows={3}
-                    value={draft}
-                    maxLength={8192}
-                    onChange={(e) => {
-                      setDraft(fitText(e.target.value, textBudget, face));
-                      setRendering(true);
-                    }}
-                    spellCheck={false}
-                    autoCapitalize="off"
-                  />
-                </div>
-                <div className="mobile-text-options">
-                  <button
-                    aria-label={`Font: ${fonts.find((f) => f.id === face)?.name ?? "Choose"}`}
-                    disabled={rendering}
-                    onClick={() => setPanel("font")}
-                  >
-                    <small>Font</small>
-                    <span>
-                      {fonts.find((f) => f.id === face)?.name ?? "Choose"}
-                    </span>
-                  </button>
-                  <button
-                    disabled={rendering}
-                    onClick={() => setPanel("motion")}
-                    aria-label={`Motion: ${MODE_LABELS[active.mode]}`}
-                  >
-                    <small>Motion</small>
-                    <span>{MODE_LABELS[active.mode]}</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowEmoji((v) => !v);
-                    }}
-                  >
-                    Pictographs
-                  </button>
-                  <button
-                    aria-label="Slot Options"
-                    disabled={rendering}
-                    onClick={() => setPanel("message")}
-                  >
-                    •••
-                  </button>
-                </div>
-                {showEmoji && (
-                  <EmojiPalette
-                    chars={pictographs()}
-                    led={led}
-                    onPick={(c) => {
-                      setDraft((t) => fitText(t + c, textBudget, face));
-                      setRendering(true);
-                    }}
-                  />
-                )}
-                <span>
-                  {measureText(draft, face)} / {textBudget} px
-                </span>
-                <span className="mobile-render-status" role="status">
-                  {rendering ? "Updating Preview" : ""}
-                </span>
-              </main>
-            )}
-            {route === "draw" && (
-              <DrawingWorkspace
-                key={active.id}
-                message={active}
-                current={frameIndex}
-                playing={playing}
-                step={step}
-                brightness={project.brightness}
-                focus={drawingFocus}
-                onFocus={setDrawingFocus}
-                onion={onion}
-                onOnion={setOnion}
-                onPlay={toggleDrawingPlayback}
-                onSelect={selectFrame}
-                onDuplicate={duplicateFrame}
-                onBlank={addBlankFrame}
-                onFrames={() => {
-                  pauseFrame();
-                  setPanel("frames");
-                }}
-                onTools={() => {
-                  pauseFrame();
-                  setPanel("tool");
-                }}
-                onSend={sendScreen}
-                onCopy={() => copySelection()}
-                onCut={() => copySelection(true)}
-                onPaste={pasteSelection}
-                hasClipboard={!!clipboard}
-                onSelectionTools={() => {
-                  pauseFrame();
-                  setPanel("selection");
-                }}
-                onSelectionDone={() => {
-                  setSelection(null);
-                  setTool("pencil");
-                }}
-                onMore={() => {
-                  pauseFrame();
-                  setPanel("canvas");
-                }}
-                undo={editor.undo}
-                redo={editor.redo}
-                canUndo={editor.canUndo && !playing}
-                canRedo={editor.canRedo && !playing}
-                canvas={{
-                  tool,
-                  brushSize,
-                  filled,
-                  selection,
-                  onSelectionChange: setSelection,
-                  onChange: (next, record) => {
-                    if (!playing)
-                      update(
-                        active.id,
-                        (m) => ({
-                          ...m,
-                          text: undefined,
-                          frames: m.frames.map((f, i) =>
-                            i === frameIndex ? next : f,
-                          ),
-                        }),
-                        record,
-                      );
-                  },
-                }}
-              />
-            )}
-            {route === "preview" && (
-              <MobilePreview
-                project={project}
-                selectedId={active.id}
-                initialScope={previewStart.scope}
-                initialStep={previewStart.step}
-                onSend={sendScreen}
-                onEdit={(message, frame) => {
-                  go(message.text ? "text" : "draw", message);
-                  setFrameIndex(frame);
-                }}
-              />
-            )}
-            {route === "send" && (
-              <SendWorkspace
-                project={project}
-                badges={badges}
-                badgeId={badgeId}
-                busy={busy}
-                progress={progress}
-                status={status}
-                sent={sent}
-                usedColumns={usedColumns}
-                onScan={() => void scan()}
-                onSend={() => void send()}
-                onChoose={(id) => {
-                  setBadgeId(id);
-                  setStatus(null);
-                  setSent(false);
-                }}
-                onEnabled={(id, enabled) => {
-                  update(id, (m) => ({ ...m, enabled }));
-                  setSent(false);
-                  setStatus(null);
-                }}
-                onBrightness={(brightness) => {
-                  commit((p) => ({ ...p, brightness }));
-                  setSent(false);
-                  setStatus(null);
-                }}
-                onDone={done}
-              />
-            )}
+            {workspace}
           </>
         )}
       </div>
@@ -1614,18 +1927,7 @@ export default function MobileApp() {
                   </label>
                 </div>
                 <div className="mobile-control-grid">
-                  {(
-                    [
-                      ["pencil", "Draw"],
-                      ["eraser", "Erase"],
-                      ["fill", "Fill"],
-                      ["line", "Line"],
-                      ["rect", "Rectangle"],
-                      ["ellipse", "Ellipse"],
-                      ["select", "Select"],
-                      ["pan", "Move Canvas"],
-                    ] as const
-                  ).map(([id, label]) => (
+                  {TOOL_CHOICES.map(([id, label]) => (
                     <button
                       key={id}
                       aria-pressed={tool === id}
