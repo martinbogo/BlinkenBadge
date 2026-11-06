@@ -971,6 +971,30 @@ html.mobile-layout #root {
   font-size: 13px;
   color: var(--mobile-muted);
 }
+/* WebKit on iPadOS ignores accent-color and draws a light track that reads
+   as a full bar, so every meter is drawn explicitly. */
+.mobile-app progress {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--mobile-line);
+  color: var(--mobile-accent);
+}
+.mobile-app progress::-webkit-progress-bar {
+  background: var(--mobile-line);
+  border-radius: 3px;
+}
+.mobile-app progress::-webkit-progress-value {
+  background: var(--mobile-accent);
+  border-radius: 3px;
+}
+.mobile-app progress::-moz-progress-bar {
+  background: var(--mobile-accent);
+  border-radius: 3px;
+}
 .mobile-memory progress,
 .mobile-send-actions progress {
   display: block;
@@ -1338,10 +1362,15 @@ html.mobile-layout #root {
 .studio-capacity progress {
   width: 180px;
   max-width: 40%;
-  accent-color: var(--mobile-accent);
 }
 .studio-capacity[data-full="true"] {
   color: #ffaaaa;
+}
+.studio-capacity[data-full="true"] progress::-webkit-progress-value {
+  background: #ff7b7b;
+}
+.studio-capacity[data-full="true"] progress::-moz-progress-bar {
+  background: #ff7b7b;
 }
 .mobile-app .studio-statusbar button {
   min-height: 44px;
