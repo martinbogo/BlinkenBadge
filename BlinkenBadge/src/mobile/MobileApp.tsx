@@ -35,7 +35,7 @@ import { MAX_BITMAP_WIDTH } from "../limits";
 import { ledPalette } from "../led";
 import MobilePreview, { MiniBadge } from "./MobilePreview";
 import FontChoice from "./FontChoice";
-import EmojiPalette from "../components/EmojiPalette";
+import { SymbolGrid, SymbolPopover, useSymbolText } from "./SymbolPicker";
 import {
   parseMessage,
   parseProject,
@@ -85,6 +85,8 @@ type Panel =
   | "selection"
   | "transform"
   | "stamp"
+  | "symbols"
+  | "stamp-symbols"
   | "image"
   | "color"
   | "confirm-mode"
@@ -133,7 +135,8 @@ export default function MobileApp() {
   const [clipboard, setClipboard] = useState<Frame | null>(null);
   const [stampText, setStampText] = useState("");
   const [stampFace, setStampFace] = useState("serif");
-  const [showEmoji, setShowEmoji] = useState(false);
+  const [symbols, setSymbols] = useState<string[]>([]);
+  const [roomForSymbols, setRoomForSymbols] = useState(false);
   const [threshold, setThreshold] = useState(127);
   const [pendingMode, setPendingMode] = useState<Mode | null>(null);
   const [led, setLed] = useState<LedColor>(() => {
@@ -171,6 +174,7 @@ export default function MobileApp() {
   const [status, setStatus] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const symbolAnchor = useRef<HTMLButtonElement>(null);
   const renderSequence = useRef(0);
   const forceTextRender = useRef(false);
   const [fontChoiceVersion, refreshFontChoice] = useState(0);
@@ -190,14 +194,23 @@ export default function MobileApp() {
   useEffect(() => {
     window.document.documentElement.classList.add("mobile-layout");
     void loadFontMetrics()
-      .then(() => setFonts(faceList()))
+      .then(() => {
+        setFonts(faceList());
+        setSymbols(pictographs());
+      })
       .catch((e) => setError(String(e)));
-    const resize = () =>
+    const resize = () => {
+      const height = window.visualViewport?.height ?? window.innerHeight;
       root.current?.style.setProperty(
         "--mobile-height",
-        `${window.visualViewport?.height ?? window.innerHeight}px`,
+        `${height}px`,
       );
+      // The software keyboard changes height without changing the editor's width.
+      setRoomForSymbols((root.current?.clientWidth || window.innerWidth) >= 1080);
+    };
     resize();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null;
+    if (root.current) observer?.observe(root.current);
     window.visualViewport?.addEventListener("resize", resize);
     window.addEventListener("resize", resize);
     const back = () => {
@@ -214,7 +227,8 @@ export default function MobileApp() {
           "",
         );
         if (!busyRef.current) {
-          if (panelRef.current) setPanel(null);
+          if (panelRef.current)
+            setPanel(panelRef.current === "stamp-symbols" ? "stamp" : null);
           else setDrawingFocus(false);
         }
         return;
@@ -236,6 +250,7 @@ export default function MobileApp() {
       window.visualViewport?.removeEventListener("resize", resize);
       window.removeEventListener("resize", resize);
       window.removeEventListener("popstate", back);
+      observer?.disconnect();
     };
   }, [setError]);
   const go = (
@@ -574,6 +589,18 @@ export default function MobileApp() {
           .filter((m) => m.id !== active.id)
           .reduce((n, m) => n + byteColumns(m), 0),
     ) * 8;
+  const changeDraft = (text: string) => {
+    if (text === draft) return;
+    setDraft(text);
+    setRendering(true);
+  };
+  const textSymbols = useSymbolText(draft, changeDraft, textBudget, face, active.id);
+  const stampSymbols = useSymbolText(stampText, setStampText, textBudget, stampFace, active.id);
+  const symbolPopover = wide && roomForSymbols;
+  const closeSymbolPopover = useCallback((restoreFocus: boolean) => {
+    setPanel(null);
+    if (restoreFocus) symbolAnchor.current?.focus();
+  }, []);
   const insertStamp = async () => {
     setRendering(true);
     setError(null);
@@ -755,6 +782,8 @@ export default function MobileApp() {
     selection: "Selection",
     transform: "Transform",
     stamp: "Stamp Text",
+    symbols: "Badge Symbols",
+    "stamp-symbols": "Badge Symbols",
     image: "Import Image",
     color: "LED Color",
     "confirm-mode": "Change Mode",
@@ -773,7 +802,7 @@ export default function MobileApp() {
   const workspace = (
     <>
       {route === "text" && (
-        <main className="mobile-content mobile-compose">
+        <main className="mobile-content mobile-compose" data-symbol-popover={symbolPopover}>
           <div className="mobile-preview-panel">
             <MiniBadge
               message={active}
@@ -801,73 +830,89 @@ export default function MobileApp() {
               </button>
             </div>
           </div>
-          <div>
-            <label className="mobile-input-label" htmlFor="mobile-message-text">
-              Message
-            </label>
+          <div className="mobile-text-editor">
+            <div className="mobile-text-editor-heading">
+              <label className="mobile-input-label" htmlFor="mobile-message-text">
+                Message
+              </label>
+              {symbols.length > 0 && (
+                <button
+                  ref={symbolAnchor}
+                  className="mobile-insert-symbol"
+                  aria-expanded={panel === "symbols"}
+                  aria-haspopup="dialog"
+                  aria-controls={panel === "symbols" && symbolPopover ? "mobile-text-symbols" : undefined}
+                  onPointerDown={() => {
+                    if (document.activeElement === textSymbols.input.current)
+                      textSymbols.rememberRange();
+                  }}
+                  onClick={() => setPanel(panel === "symbols" ? null : "symbols")}
+                >
+                  Insert Symbol
+                </button>
+              )}
+            </div>
             <textarea
+              key={active.id}
+              ref={textSymbols.input}
               id="mobile-message-text"
               rows={3}
               value={draft}
               maxLength={8192}
-              onChange={(e) => {
-                setDraft(fitText(e.target.value, textBudget, face));
-                setRendering(true);
-              }}
+              onChange={(e) => textSymbols.type(e.target.value)}
+              onSelect={textSymbols.rememberRange}
+              onBlur={textSymbols.rememberRange}
               spellCheck={false}
               autoCapitalize="off"
             />
-          </div>
-          <div className="mobile-text-options">
-            <button
-              aria-label={`Font: ${fonts.find((f) => f.id === face)?.name ?? "Choose"}`}
-              disabled={rendering}
-              onClick={() => setPanel("font")}
-            >
-              <small>Font</small>
-              <span>{fonts.find((f) => f.id === face)?.name ?? "Choose"}</span>
-            </button>
-            <button
-              disabled={rendering}
-              onClick={() => setPanel("motion")}
-              aria-label={`Motion: ${MODE_LABELS[active.mode]}`}
-            >
-              <small>Motion</small>
-              <span>{MODE_LABELS[active.mode]}</span>
-            </button>
-            <button
-              onClick={() => {
-                setShowEmoji((v) => !v);
-              }}
-            >
-              Pictographs
-            </button>
-            {!wide && (
+            <div className="mobile-text-options">
               <button
-                aria-label="Slot Options"
+                aria-label={`Font: ${fonts.find((f) => f.id === face)?.name ?? "Choose"}`}
                 disabled={rendering}
-                onClick={() => setPanel("message")}
+                onClick={() => setPanel("font")}
               >
-                •••
+                <small>Font</small>
+                <span>{fonts.find((f) => f.id === face)?.name ?? "Choose"}</span>
               </button>
+              <button
+                disabled={rendering}
+                onClick={() => setPanel("motion")}
+                aria-label={`Motion: ${MODE_LABELS[active.mode]}`}
+              >
+                <small>Motion</small>
+                <span>{MODE_LABELS[active.mode]}</span>
+              </button>
+              {textSymbols.canUndo && (
+                <button data-keep-symbols onClick={textSymbols.undo}>Undo Symbol</button>
+              )}
+              {!wide && (
+                <button
+                  aria-label="Slot Options"
+                  disabled={rendering}
+                  onClick={() => setPanel("message")}
+                >
+                  •••
+                </button>
+              )}
+            </div>
+            {panel === "symbols" && symbolPopover && (
+              <SymbolPopover
+                anchor={symbolAnchor}
+                chars={symbols}
+                led={led}
+                onPick={textSymbols.pick}
+                onClose={closeSymbolPopover}
+              />
             )}
+            <div className="mobile-text-meta">
+              <span>{measureText(draft, face)} / {textBudget} px</span>
+              {panel !== "symbols" || symbolPopover ? (
+                <span className="mobile-render-status" role="status">
+                  {textSymbols.notice || (rendering ? "Updating Preview" : "")}
+                </span>
+              ) : null}
+            </div>
           </div>
-          {showEmoji && (
-            <EmojiPalette
-              chars={pictographs()}
-              led={led}
-              onPick={(c) => {
-                setDraft((t) => fitText(t + c, textBudget, face));
-                setRendering(true);
-              }}
-            />
-          )}
-          <span>
-            {measureText(draft, face)} / {textBudget} px
-          </span>
-          <span className="mobile-render-status" role="status">
-            {rendering ? "Updating Preview" : ""}
-          </span>
         </main>
       )}
       {route === "draw" && (
@@ -1393,18 +1438,39 @@ export default function MobileApp() {
           </>
         )}
       </div>
-      {panel && (
+      {panel && !(panel === "symbols" && symbolPopover) && (
         <Sheet
           title={sheetTitle[panel]}
           closeLabel={
-            panel.startsWith("confirm-") || panel === "convert"
+            panel === "stamp-symbols" ? "Back"
+            : panel.startsWith("confirm-") || panel === "convert"
               ? "Cancel"
               : "Done"
           }
-          onClose={() => setPanel(null)}
-          busy={!!busy || rendering}
+          onClose={() => setPanel(panel === "stamp-symbols" ? "stamp" : null)}
+          busy={!!busy || (rendering && panel !== "symbols")}
         >
           <div className="mobile-sheet-actions">
+            {panel === "symbols" && (
+              <>
+                <MiniBadge message={active} brightness={project.brightness} />
+                <SymbolGrid chars={symbols} led={led} onPick={textSymbols.pick} />
+                <div className="mobile-symbol-feedback">
+                  <button disabled={!textSymbols.canUndo} onClick={textSymbols.undo}>Undo Symbol</button>
+                  <span className="mobile-render-status" role="status">{textSymbols.notice}</span>
+                </div>
+              </>
+            )}
+            {panel === "stamp-symbols" && (
+              <>
+                <div className="mobile-symbol-draft" aria-label="Stamp text draft">{stampText}</div>
+                <SymbolGrid chars={symbols} led={led} onPick={stampSymbols.pick} />
+                <div className="mobile-symbol-feedback">
+                  <button disabled={!stampSymbols.canUndo} onClick={stampSymbols.undo}>Undo Symbol</button>
+                  <span className="mobile-render-status" role="status">{stampSymbols.notice}</span>
+                </div>
+              </>
+            )}
             {panel === "project" && (
               <>
                 <p>
@@ -1683,14 +1749,13 @@ export default function MobileApp() {
                 <label>
                   Text
                   <textarea
+                    ref={stampSymbols.input}
                     aria-label="Stamp Text"
                     rows={2}
                     value={stampText}
-                    onChange={(e) =>
-                      setStampText(
-                        fitText(e.target.value, textBudget, stampFace),
-                      )
-                    }
+                    onChange={(e) => stampSymbols.type(e.target.value)}
+                    onSelect={stampSymbols.rememberRange}
+                    onBlur={stampSymbols.rememberRange}
                   />
                 </label>
                 <label>
@@ -1712,17 +1777,20 @@ export default function MobileApp() {
                   {active.mode === "animation" ? BADGE_WIDTH : textBudget} px
                   {active.mode === "animation" ? " · Cropped to Frame" : ""}
                 </span>
-                <button onClick={() => setShowEmoji((v) => !v)}>
-                  Pictographs
-                </button>
-                {showEmoji && (
-                  <EmojiPalette
-                    chars={pictographs()}
-                    led={led}
-                    onPick={(c) =>
-                      setStampText((t) => fitText(t + c, textBudget, stampFace))
-                    }
-                  />
+                {symbols.length > 0 && (
+                  <button
+                    aria-haspopup="dialog"
+                    onPointerDown={() => {
+                      if (document.activeElement === stampSymbols.input.current)
+                        stampSymbols.rememberRange();
+                    }}
+                    onClick={() => setPanel("stamp-symbols")}
+                  >
+                    Insert Symbol
+                  </button>
+                )}
+                {stampSymbols.canUndo && (
+                  <button onClick={stampSymbols.undo}>Undo Symbol</button>
                 )}
                 <button
                   className="mobile-primary"

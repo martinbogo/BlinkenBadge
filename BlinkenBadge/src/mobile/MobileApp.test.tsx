@@ -41,6 +41,7 @@ vi.mock("../platform", () => ({ platform: host }));
 vi.mock("../font", async (original) => ({
   ...(await original<typeof import("../font")>()),
   loadFontMetrics: async () => {},
+  pictographs: () => ["❤", "🚀"],
   faceList: () => [
     { id: "serif", name: "Serif", notice: "" },
     { id: "sans", name: "Sans", notice: "" },
@@ -88,6 +89,26 @@ const open = async () => {
 };
 
 describe("mobile editing flows", () => {
+  it("inserts several symbols at the caret in the compact sheet and undoes the last one", async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const user = userEvent.setup();
+    await open();
+    await user.click(screen.getByRole("button", { name: /Untitled/ }));
+    const field = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Message" });
+    await user.type(field, "HI MARTIN");
+    field.setSelectionRange(3, 3);
+    fireEvent.select(field);
+    await user.click(screen.getByRole("button", { name: "Insert Symbol" }));
+    const picker = screen.getByRole("dialog", { name: "Badge Symbols" });
+    await user.click(await within(picker).findByRole("button", { name: "Heart" }));
+    await user.click(within(picker).getByRole("button", { name: "Rocket" }));
+    expect(field.value).toBe("HI ❤🚀MARTIN");
+    await user.click(within(picker).getByRole("button", { name: "Undo Symbol" }));
+    await user.click(within(picker).getByRole("button", { name: "Done" }));
+    expect(field.value).toBe("HI ❤MARTIN");
+    await waitFor(() => expect(host.renderText).toHaveBeenLastCalledWith("HI ❤MARTIN", "serif"));
+  });
+
   it("renders text, returns to the message list, and saves its editable source", async () => {
     const user = userEvent.setup();
     await open();
@@ -723,6 +744,32 @@ describe("mobile desktop feature parity", () => {
 });
 
 describe("animation frame artwork", () => {
+  it("returns from the symbol picker to the same stamp draft before inserting it", async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const user = userEvent.setup();
+    host.recoveryRead.mockResolvedValue({
+      json: serializeProject({ brightness: 100, messages: [newMessage("animation")] }),
+      path: null,
+      saved_at: "",
+    });
+    await open();
+    await user.click(screen.getByRole("button", { name: /Untitled/ }));
+    await user.click(screen.getByRole("button", { name: "Canvas Options" }));
+    await user.click(screen.getByRole("button", { name: "Stamp Text" }));
+    const field = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Stamp Text" });
+    await user.type(field, "HI MARTIN");
+    field.setSelectionRange(3, 3);
+    fireEvent.select(field);
+    await user.click(screen.getByRole("button", { name: "Insert Symbol" }));
+    const picker = screen.getByRole("dialog", { name: "Badge Symbols" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    await user.click(await within(picker).findByRole("button", { name: "Heart" }));
+    await user.click(within(picker).getByRole("button", { name: "Back" }));
+    expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Stamp Text" }).value).toBe("HI ❤MARTIN");
+    await user.click(screen.getByRole("button", { name: "Insert Text" }));
+    expect(host.renderText).toHaveBeenLastCalledWith("HI ❤MARTIN", "serif");
+  });
+
   it("keeps existing pixels and frame counts when stamping multiple fonts", async () => {
     const user = userEvent.setup();
     const message = newMessage("animation");
@@ -928,6 +975,28 @@ describe("tablet studio layout", () => {
         ] as unknown as [string]
       )[0],
     );
+
+  it("replaces selected text in a tablet popover and returns focus on Escape", async () => {
+    vi.stubGlobal("innerWidth", 1408);
+    vi.stubGlobal("innerHeight", 970);
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const user = userEvent.setup();
+    await restoreTexts("HI MARTIN");
+    const field = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Message" });
+    await user.click(field);
+    field.setSelectionRange(0, 2);
+    fireEvent.select(field);
+    const insert = await screen.findByRole("button", { name: "Insert Symbol" });
+    await user.click(insert);
+    const picker = screen.getByRole("dialog", { name: "Badge Symbols" });
+    expect(picker.getAttribute("aria-modal")).toBeNull();
+    await user.click(await within(picker).findByRole("button", { name: "Heart" }));
+    expect(field.value).toBe("❤ MARTIN");
+    expect(screen.getByRole("dialog", { name: "Badge Symbols" })).toBe(picker);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Badge Symbols" })).toBeNull();
+    expect(document.activeElement).toBe(insert);
+  });
 
   it("keeps the slot list beside the editor and opens the first slot directly", async () => {
     const user = userEvent.setup();
