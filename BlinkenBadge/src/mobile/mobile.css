@@ -259,6 +259,88 @@ html.mobile-layout #root {
   gap: 10px;
   flex-wrap: wrap;
   align-items: center;
+  margin-top: 10px;
+}
+.mobile-text-editor {
+  position: relative;
+  min-width: 0;
+  flex: none;
+}
+.mobile-text-editor-heading,
+.mobile-text-meta,
+.mobile-symbol-feedback {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.mobile-text-editor-heading {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.mobile-text-editor-heading .mobile-input-label {
+  margin-bottom: 0;
+}
+.mobile-app .mobile-insert-symbol {
+  border-color: var(--mobile-line);
+  color: var(--mobile-accent);
+}
+.mobile-app .mobile-insert-symbol[aria-expanded="true"] {
+  border-color: var(--mobile-accent);
+}
+.mobile-text-meta {
+  margin-top: 10px;
+}
+.mobile-compose[data-symbol-popover="true"] .mobile-text-editor {
+  width: calc(100% - 368px);
+}
+.mobile-symbol-popover {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 16px);
+  z-index: 2;
+  width: 352px;
+  max-height: 392px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--mobile-panel);
+  border: 1px solid var(--mobile-line);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px #0006;
+}
+.mobile-symbol-popover::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 18px;
+  width: 10px;
+  height: 10px;
+  background: var(--mobile-panel);
+  border-left: 1px solid var(--mobile-line);
+  border-bottom: 1px solid var(--mobile-line);
+  transform: rotate(45deg);
+}
+.mobile-symbol-popover > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+  padding-left: 4px;
+}
+.mobile-symbol-popover > header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.mobile-symbol-popover > header button {
+  color: var(--mobile-accent);
+}
+.mobile-symbol-draft {
+  min-height: 44px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 .mobile-text-options button {
   background: var(--mobile-panel);
@@ -539,12 +621,33 @@ html.mobile-layout #root {
 }
 .mobile-app .emoji-palette {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  /* The sheet scrolls as a unit. Only the popover caps the grid's height. */
+  flex: none;
+  max-height: none;
+  overflow: visible;
 }
 .mobile-app .emoji-palette button {
-  min-height: 48px;
-  min-width: 48px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 3px;
+  background: var(--mobile-bg);
+  border-color: var(--mobile-line);
+  border-radius: 8px;
+}
+.mobile-app .emoji-palette button:active {
+  border-color: var(--mobile-accent);
+}
+.mobile-app .mobile-symbol-popover .emoji-palette {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .mobile-app .mobile-font-choice {
   display: flex;
