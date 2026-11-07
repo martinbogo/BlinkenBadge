@@ -175,7 +175,6 @@ describe("mobile editing flows", () => {
     await user.click(screen.getByRole("button", { name: "Pixel Drawing" }));
     expect(screen.queryByLabelText("Animation Frames")).toBeNull();
     expect(screen.getByRole("button", { name: "Send to Badge" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Canvas Options" }));
     await user.click(screen.getByRole("button", { name: "Motion" }));
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Mode" }),
@@ -268,8 +267,7 @@ describe("mobile desktop feature parity", () => {
     );
     await user.click(screen.getByRole("button", { name: "Frame 2" }));
     expect(document.querySelectorAll('[data-onion="true"]')).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "Frame Options" }));
-    await user.click(screen.getByRole("checkbox", { name: "Onion Skin" }));
+    await user.click(screen.getByRole("button", { name: "Onion Skin" }));
     expect(document.querySelectorAll('[data-onion="true"]')).toHaveLength(0);
     expect(
       (
@@ -278,9 +276,9 @@ describe("mobile desktop feature parity", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Frame Options" }));
     await user.click(screen.getByRole("button", { name: "Delete Frame" }));
     expect(screen.queryByRole("button", { name: "Frame 8" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Frame Options" }));
     await user.click(screen.getByRole("button", { name: "Duplicate Frame" }));
     expect(screen.getByRole("button", { name: "Frame 8" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Frame Options" }));
@@ -332,10 +330,7 @@ describe("mobile desktop feature parity", () => {
       act(() =>
         vi.advanceTimersByTime(stepDelay(project.messages[0].speed) * 2),
       );
-      expect(
-        within(workspace).getByRole("button", { name: "Frame Options" })
-          .textContent,
-      ).toContain("Frame 3/8");
+      expect(within(workspace).getByText("Frame 3/8")).toBeTruthy();
       expect(canvas.getAttribute("aria-disabled")).toBe("true");
       expect(lit()?.getAttribute("x")).not.toBe(before);
       const paused = lit()?.getAttribute("x");
@@ -347,15 +342,12 @@ describe("mobile desktop feature parity", () => {
       fireEvent.click(
         within(workspace).getByRole("button", { name: "Previous Frame" }),
       );
-      expect(
-        within(workspace).getByRole("button", { name: "Frame Options" })
-          .textContent,
-      ).toContain("Frame 2/8");
+      expect(within(workspace).getByText("Frame 2/8")).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
     await user.click(
-      within(workspace).getByRole("button", { name: "Show Frames" }),
+      within(workspace).getByRole("button", { name: "Exit Focus" }),
     );
     expect(
       screen
@@ -394,7 +386,7 @@ describe("mobile desktop feature parity", () => {
       screen.getByRole("button", { name: /Animation 1.*Slot 1/ }),
     );
     await user.click(screen.getByRole("button", { name: "Focus Canvas" }));
-    await user.click(screen.getByRole("button", { name: "Frame Options" }));
+    await user.click(screen.getByRole("button", { name: "Transform" }));
     history.back();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.getByRole("button", { name: "Exit Focus" })).toBeTruthy();
@@ -579,22 +571,16 @@ describe("mobile desktop feature parity", () => {
       ).disabled,
     ).toBe(true);
   });
-  it("makes speed editable from frame controls and sending reachable from editor and preview", async () => {
+  it("makes speed editable alongside playback and sending reachable from editor and preview", async () => {
     const user = userEvent.setup();
     await restore();
     await user.click(
       screen.getByRole("button", { name: /Animation 1.*Slot 1/ }),
     );
-    await user.click(screen.getByRole("button", { name: "Frame Options" }));
-    fireEvent.change(screen.getByRole("slider", { name: "Playback Speed" }), {
-      target: { value: "7" },
-    });
-    await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }),
-    );
-    expect(
-      screen.getByRole("button", { name: "Frame Options" }).textContent,
-    ).toContain("Speed 7/8");
+    const playback = screen.getByRole("toolbar", { name: "Playback" });
+    const speed = within(playback).getByRole<HTMLSelectElement>("combobox", { name: "Playback Speed" });
+    await user.selectOptions(speed, "7");
+    expect(speed.value).toBe("7");
     await user.click(screen.getByRole("button", { name: "Send to Badge" }));
     expect(screen.getByRole("main", { name: "Prepare Transfer" })).toBeTruthy();
     expect(host.sendBle).not.toHaveBeenCalled();
@@ -615,14 +601,18 @@ describe("mobile desktop feature parity", () => {
     await user.click(
       screen.getByRole("button", { name: /Animation 1.*Slot 1/ }),
     );
-    await user.click(screen.getByRole("button", { name: "Drawing Tool" }));
     await user.click(screen.getByRole("button", { name: "Select" }));
+    expect(screen.getByRole("button", { name: "Play Preview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add Frame" })).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "Copy Pixels" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
     await user.click(screen.getByRole("button", { name: "Selection Options" }));
     await user.click(screen.getByRole("button", { name: "Select All" }));
+    await user.click(screen.getByRole("button", { name: "Selection Options" }));
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Nudge Right" }).disabled).toBe(false);
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }));
     await user.click(screen.getByRole("button", { name: "Copy Pixels" }));
     await screen.findByText("Copied Pixels");
     await user.click(screen.getByRole("button", { name: "Frame 2" }));
@@ -633,13 +623,12 @@ describe("mobile desktop feature parity", () => {
     ).toBe("114");
     await user.click(screen.getByRole("button", { name: "Finish Selection" }));
     await user.click(screen.getByRole("button", { name: "Undo" }));
-    await user.click(screen.getByRole("button", { name: "Canvas Options" }));
+    await user.click(screen.getByRole("button", { name: "Transform" }));
     await user.click(screen.getByRole("button", { name: "Clear Frame" }));
     expect(
       canvas.querySelectorAll('rect[fill="var(--mobile-led)"]'),
     ).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "Undo" }));
-    await user.click(screen.getByRole("button", { name: "Canvas Options" }));
     await user.click(screen.getByRole("button", { name: "Slot Options" }));
     await user.click(screen.getByRole("button", { name: "Export Slot" }));
     expect(
@@ -693,22 +682,10 @@ describe("mobile desktop feature parity", () => {
     });
     render(<MobileApp />);
     await user.click(await screen.findByRole("button", { name: /Untitled/ }));
-    for (const group of [null, "Transform"]) {
-      await user.click(screen.getByRole("button", { name: "Canvas Options" }));
-      if (group) await user.click(screen.getByRole("button", { name: group }));
-      await user.click(screen.getByRole("button", { name: "Clear Frame" }));
-      if (screen.queryByRole("dialog"))
-        await user.click(
-          within(screen.getByRole("dialog")).getByRole("button", {
-            name: "Done",
-          }),
-        );
-      expect(
-        screen.getByRole("img", { name: /88 by 11 pixel canvas/ }),
-      ).toBeTruthy();
-      await user.click(screen.getByRole("button", { name: "Undo" }));
-    }
-    await user.click(screen.getByRole("button", { name: "Canvas Options" }));
+    await user.click(screen.getByRole("button", { name: "Transform" }));
+    await user.click(screen.getByRole("button", { name: "Clear Frame" }));
+    expect(screen.getByRole("img", { name: /88 by 11 pixel canvas/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Undo" }));
     await user.click(screen.getByRole("button", { name: "Slot Options" }));
     await user.click(screen.getByRole("button", { name: "Export Slot" }));
     expect(
@@ -754,8 +731,7 @@ describe("animation frame artwork", () => {
     });
     await open();
     await user.click(screen.getByRole("button", { name: /Untitled/ }));
-    await user.click(screen.getByRole("button", { name: "Canvas Options" }));
-    await user.click(screen.getByRole("button", { name: "Stamp Text" }));
+    await user.click(screen.getByRole("button", { name: "Text" }));
     const field = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Stamp Text" });
     await user.type(field, "HI MARTIN");
     field.setSelectionRange(3, 3);
@@ -766,8 +742,49 @@ describe("animation frame artwork", () => {
     await user.click(await within(picker).findByRole("button", { name: "Heart" }));
     await user.click(within(picker).getByRole("button", { name: "Back" }));
     expect(screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Stamp Text" }).value).toBe("HI ❤MARTIN");
-    await user.click(screen.getByRole("button", { name: "Insert Text" }));
+    await user.click(screen.getByRole("button", { name: "Position Text" }));
     expect(host.renderText).toHaveBeenLastCalledWith("HI ❤MARTIN", "serif");
+  });
+
+  it("previews a symbol without changing pixels, then places it on the selected frame and undoes it", async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const user = userEvent.setup();
+    const message = newMessage("animation");
+    message.frames.push(blankFrame(44));
+    host.recoveryRead.mockResolvedValue({
+      json: serializeProject({ brightness: 100, messages: [message] }),
+      path: null,
+      saved_at: "",
+    });
+    await open();
+    await user.click(screen.getByRole("button", { name: /Untitled/ }));
+    await user.click(screen.getByRole("button", { name: "Frame 2" }));
+    const pickHeart = async () => {
+      await user.click(screen.getByRole("button", { name: "Symbols" }));
+      await user.click(await screen.findByRole("button", { name: "Heart" }));
+      return screen.findByRole("img", { name: /place symbol/ });
+    };
+    const canvas = await pickHeart();
+    const pixels = () => canvas.querySelectorAll('rect[fill="var(--mobile-led)"]');
+    expect(canvas.querySelectorAll("[data-stamp]")).toHaveLength(1);
+    expect(pixels()).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Cancel Placement" }));
+    expect(canvas.querySelector("[data-stamp]")).toBeNull();
+    expect(pixels()).toHaveLength(0);
+    await pickHeart();
+    const target = canvas.querySelectorAll("rect")[44 + 5];
+    const x = Number(target.getAttribute("x")) + 1;
+    const y = Number(target.getAttribute("y")) + 1;
+    Object.assign(canvas, { setPointerCapture: () => {} });
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerUp(canvas, { button: 0, pointerId: 1, clientX: x, clientY: y });
+    expect(pixels()).toHaveLength(1);
+    expect(pixels()[0]).toBe(target);
+    await user.click(screen.getByRole("button", { name: "Frame 1" }));
+    expect(pixels()).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Frame 2" }));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(pixels()).toHaveLength(0);
   });
 
   it("keeps existing pixels and frame counts when stamping multiple fonts", async () => {
@@ -786,8 +803,7 @@ describe("animation frame artwork", () => {
       ["future", 0],
       ["cartoon", 1],
     ] as const) {
-      await user.click(screen.getByRole("button", { name: "Canvas Options" }));
-      await user.click(screen.getByRole("button", { name: "Stamp Text" }));
+      await user.click(screen.getByRole("button", { name: "Text" }));
       await user.clear(screen.getByRole("textbox", { name: "Stamp Text" }));
       await user.type(screen.getByRole("textbox", { name: "Stamp Text" }), "A");
       await user.selectOptions(
@@ -802,11 +818,10 @@ describe("animation frame artwork", () => {
         columns: 6,
         missing: [],
       });
-      await user.click(screen.getByRole("button", { name: "Insert Text" }));
-      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await user.click(screen.getByRole("button", { name: "Position Text" }));
+      await user.click(await screen.findByRole("button", { name: "Place Text" }));
       expect(host.renderText).toHaveBeenLastCalledWith("A", face);
     }
-    await user.click(screen.getByRole("button", { name: "Canvas Options" }));
     await user.click(screen.getByRole("button", { name: "Slot Options" }));
     await user.click(screen.getByRole("button", { name: "Export Slot" }));
     const back = parseMessage(host.exportDocument.mock.calls[0][0] as string);
@@ -1013,6 +1028,8 @@ describe("tablet studio layout", () => {
     await user.click(within(slots).getByRole("button", { name: "Add Slot" }));
     await user.click(screen.getByRole("button", { name: "Pixel Drawing" }));
     const tools = await screen.findByRole("toolbar", { name: "Drawing Tools" });
+    expect(screen.queryByRole("button", { name: "Drawing Tool" })).toBeNull();
+    expect(within(tools).getByRole("button", { name: "Symbols" })).toBeTruthy();
     await user.click(within(tools).getByRole("button", { name: "Erase" }));
     expect(
       within(tools)

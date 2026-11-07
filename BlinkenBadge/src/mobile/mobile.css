@@ -710,50 +710,111 @@ html.mobile-layout #root {
   min-height: 0;
   overflow: hidden;
 }
-.studio-monitor {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 340px;
-  max-width: calc(100% - 24px);
-  margin: 4px auto 0;
-  flex: none;
-}
-.studio-monitor .mobile-badge {
-  padding: 6px;
-  border-radius: 10px;
-}
-.studio-controls {
+.studio-preview-controls,
+.studio-drawing-controls,
+.studio-controls,
+.studio-monitor,
+.studio-tool-rail,
+.studio-tool-settings,
+.studio-frame-actions,
+.studio-view-tools {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 2px 8px;
+}
+.studio-preview-controls,
+.studio-drawing-controls {
   flex: none;
+  flex-wrap: wrap;
+  padding: 4px 8px;
 }
-.mobile-app .studio-controls button {
-  padding: 4px 6px;
+.studio-monitor {
+  flex: 1 1 220px;
+  max-width: 460px;
+  min-width: 0;
 }
-.mobile-app .studio-action {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 48px;
-  min-height: 48px;
-  font-size: 11px;
+.studio-monitor .mobile-badge {
+  padding: 5px;
+  border-radius: 8px;
+  max-height: 72px;
 }
-.mobile-app .studio-frame-position {
-  flex-direction: column;
-  min-width: 64px;
-  gap: 1px;
+.mobile-app .studio-monitor-display {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
   font-size: 12px;
-  color: var(--mobile-fg);
-}
-.studio-frame-position small {
-  font-size: 10px;
   color: var(--mobile-muted);
 }
-.studio-frame-caption {
+.studio-monitor-display .mobile-badge {
+  flex: 1;
+  min-width: 0;
+}
+.studio-controls,
+.studio-frame-actions,
+.studio-tool-settings {
+  flex-wrap: wrap;
+}
+.mobile-app .studio-controls button,
+.mobile-app .studio-monitor button:not(.studio-monitor-display),
+.mobile-app .studio-tool-rail button,
+.mobile-app .studio-tool-settings button,
+.mobile-app .studio-frame-actions button,
+.mobile-app .studio-view-tools button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 7px;
+  gap: 4px;
+  font-size: 13px;
+}
+.mobile-app .studio-controls .studio-icon,
+.mobile-app .studio-monitor .studio-icon,
+.mobile-app .studio-tool-settings .studio-icon,
+.mobile-app .studio-frame-actions .studio-icon,
+.mobile-app .studio-view-tools .studio-icon {
+  width: 16px;
+  height: 16px;
+}
+.studio-speed,
+.studio-brush-size {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--mobile-muted);
+}
+.mobile-app .studio-speed select,
+.mobile-app .studio-brush-size select {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 1px solid var(--mobile-line);
+  border-radius: 8px;
+  background: var(--mobile-bg);
+  font-size: 13px;
+}
+.studio-drawing-controls {
+  border-block: 1px solid var(--mobile-line);
+  gap: 4px 12px;
+}
+.studio-tool-rail {
+  flex-wrap: wrap;
+}
+.mobile-app .studio-tool-rail button {
+  border-color: var(--mobile-line);
+  background: var(--mobile-bg);
+}
+.mobile-app .studio-tool-rail button[aria-pressed="true"] {
+  border-color: var(--mobile-accent);
+  background: var(--mobile-panel);
+  color: var(--mobile-accent);
+}
+.mobile-app .studio-placement button:first-child {
+  color: var(--mobile-accent);
+  border-color: var(--mobile-accent);
+}
+.studio-frame-position {
+  padding-inline: 4px;
+  white-space: nowrap;
   font-size: 12px;
   color: var(--mobile-muted);
 }
@@ -778,13 +839,26 @@ html.mobile-layout #root {
   background: var(--mobile-panel);
   pointer-events: none;
 }
+.studio-frames {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid var(--mobile-line);
+  padding-inline: 4px;
+}
+.studio-focus .studio-frames {
+  justify-content: center;
+}
 .studio-filmstrip {
   display: flex;
   gap: 4px;
   overflow-x: auto;
   overscroll-behavior: contain;
   padding: 4px 8px;
-  flex: none;
+  flex: 1 1 200px;
+  min-width: 0;
 }
 .mobile-app .studio-filmstrip button {
   flex: none;
@@ -805,57 +879,18 @@ html.mobile-layout #root {
   border-radius: 5px;
 }
 .studio-view-tools {
-  display: flex;
-  align-items: center;
-  justify-content: space-evenly;
-  gap: 4px;
   flex: none;
   border-top: 1px solid var(--mobile-line);
-  padding: 6px 8px max(8px, env(safe-area-inset-bottom, 0px));
-}
-.mobile-app .studio-view-tools button {
-  flex: none;
-  width: 48px;
-  padding: 4px;
-  font-size: 12px;
+  padding: 2px 8px max(3px, env(safe-area-inset-bottom, 0px));
 }
 .studio-zoom {
   display: flex;
   border: 1px solid var(--mobile-line);
   border-radius: 10px;
 }
-.mobile-app .studio-zoom button {
-  border-radius: 8px;
-  min-height: 46px;
-}
 .studio-zoom button[aria-pressed="true"] {
   background: var(--mobile-panel);
   color: var(--mobile-accent);
-}
-.mobile-app .studio-tool {
-  background: var(--mobile-panel);
-  border-color: var(--mobile-line);
-}
-.studio-focus-bar {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  padding: 4px 8px;
-  flex: none;
-}
-.studio-focus-bar button {
-  padding: 8px;
-}
-.studio-focus-monitor {
-  flex: 1;
-  min-width: 0;
-  max-width: 220px;
-  margin: 0 auto;
-}
-.studio-focus-monitor .mobile-badge {
-  max-height: 44px;
-  padding: 3px;
-  border-radius: 6px;
 }
 .canvas-lens {
   position: absolute;
@@ -885,57 +920,74 @@ html.mobile-layout #root {
   font-size: 11px;
   color: var(--mobile-muted);
 }
-@media (min-width: 600px) and (max-height: 549px) {
-  .mobile-studio:not(.studio-focus) {
+@media (max-width: 520px) {
+  .studio-monitor .mobile-badge {
+    max-height: 58px;
+  }
+  .studio-tool-rail {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 200px;
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+    width: 100%;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 3px;
   }
-  .mobile-studio:not(.studio-focus) .studio-canvas {
-    grid-column: 1;
-    grid-row: 1 / 3;
+  .mobile-app .studio-tool-rail button,
+  .mobile-app .studio-frame-actions button,
+  .mobile-app .studio-tool-settings button {
+    padding-inline: 3px;
+    font-size: 12px;
   }
-  .mobile-studio:not(.studio-focus) .studio-monitor {
-    grid-column: 2;
+  .studio-frames {
+    justify-content: center;
+  }
+  .studio-filmstrip {
+    flex-basis: 100%;
+  }
+}
+@media (min-width: 600px) and (max-height: 549px) {
+  .mobile-studio {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 220px;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .studio-drawing-controls {
+    grid-column: 1 / -1;
     grid-row: 1;
-    width: 184px;
-    align-self: end;
-    margin: 0 auto;
   }
-  .mobile-studio:not(.studio-focus) .studio-controls {
+  .studio-canvas {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .studio-preview-controls {
+    flex-flow: column nowrap;
     grid-column: 2;
     grid-row: 2;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    align-self: start;
     gap: 0;
-    padding: 0 4px;
   }
-  .mobile-studio:not(.studio-focus) .studio-filmstrip {
-    grid-column: 1 / 3;
+  .studio-controls {
+    width: 100%;
+  }
+  .mobile-app .studio-tool-rail button {
+    padding-inline: 4px;
+    font-size: 12px;
+  }
+  .studio-monitor {
+    flex: none;
+    width: 100%;
+  }
+  .studio-monitor .mobile-badge {
+    max-height: 44px;
+  }
+  .studio-frames {
+    grid-column: 1;
     grid-row: 3;
   }
-  .mobile-studio:not(.studio-focus) .studio-view-tools {
-    grid-column: 1 / 3;
-    grid-row: 4;
-    padding-top: 2px;
-  }
-  .studio-focus-bar,
-  .studio-focus .studio-controls {
-    width: 100%;
-    max-width: 520px;
-    align-self: center;
+  .studio-view-tools {
+    grid-column: 2;
+    grid-row: 3;
+    flex-wrap: wrap;
   }
 }
 
-/* Common actions stay near their context; detailed controls stay in sheets. */
-.studio-monitor-display {
-  flex: 1;
-  min-width: 0;
-}
-.studio-monitor .studio-action {
-  padding: 4px;
-}
 .mobile-app .studio-labeled {
   flex-direction: column;
   gap: 2px;
@@ -977,12 +1029,6 @@ html.mobile-layout #root {
 }
 .mobile-preview-actions .mobile-preview-play {
   margin: 0;
-}
-.mobile-range-caption {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--mobile-muted);
 }
 .mobile-action-help {
   margin-top: -8px;
@@ -1118,33 +1164,6 @@ html.mobile-layout #root {
 }
 .mobile-send-actions .mobile-control-grid > button:only-child {
   grid-column: 1 / -1;
-}
-
-.mobile-brush-settings {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.mobile-brush-settings > label {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-.mobile-brush-settings select {
-  width: 70px;
-  padding: 8px;
-}
-.mobile-sheet-actions > .mobile-speed-control {
-  display: block;
-}
-.mobile-speed-control input[type="range"] {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
 }
 
 /* Studio layout for tablets: slots stay beside the editor, as on the desktop. */
@@ -1364,87 +1383,6 @@ html.mobile-layout #root {
 }
 .mobile-app[data-layout="wide"] .mobile-preview-actions {
   justify-content: center;
-}
-.mobile-app[data-layout="wide"] .studio-monitor {
-  width: 560px;
-  margin-top: 12px;
-}
-.mobile-app[data-layout="wide"] .studio-controls {
-  padding: 4px 12px;
-}
-.mobile-app[data-layout="wide"] .studio-view-tools {
-  justify-content: center;
-  gap: 24px;
-  padding-bottom: 8px;
-}
-.studio-tool-rail {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex: none;
-  padding: 6px 12px;
-}
-.mobile-app .studio-tool-rail button {
-  min-height: 44px;
-  min-width: 64px;
-  padding: 6px 10px;
-  font-size: 14px;
-  border-color: var(--mobile-line);
-  background: var(--mobile-bg);
-}
-.mobile-app .studio-tool-rail button[aria-pressed="true"] {
-  border-color: var(--mobile-led);
-  color: var(--mobile-fg);
-  box-shadow: inset 0 0 0 1px var(--mobile-led);
-}
-.studio-rail-group {
-  display: flex;
-  gap: 4px;
-  margin-left: 10px;
-}
-.mobile-app .studio-rail-group button {
-  min-width: 48px;
-}
-@media (min-width: 1000px) {
-  .mobile-app[data-layout="wide"] .mobile-studio:not(.studio-focus) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-  }
-  .mobile-app[data-layout="wide"] .mobile-studio:not(.studio-focus) > * {
-    grid-column: 1 / -1;
-  }
-  .mobile-app[data-layout="wide"]
-    .mobile-studio:not(.studio-focus)
-    > .studio-monitor {
-    grid-column: 1;
-    grid-row: 1;
-    width: auto;
-    max-width: 560px;
-    margin: 10px 0 4px 16px;
-    justify-self: stretch;
-  }
-  .mobile-app[data-layout="wide"]
-    .mobile-studio:not(.studio-focus)
-    > .studio-controls {
-    grid-column: 2;
-    grid-row: 1;
-    padding-right: 16px;
-  }
-  .mobile-app[data-layout="wide"] .studio-tool-rail {
-    grid-row: 2;
-  }
-  .mobile-app[data-layout="wide"] .studio-canvas {
-    grid-row: 3;
-  }
-  .mobile-app[data-layout="wide"] .studio-filmstrip {
-    grid-row: 4;
-  }
-  .mobile-app[data-layout="wide"] .studio-view-tools {
-    grid-row: 5;
-  }
 }
 .studio-statusbar {
   display: flex;

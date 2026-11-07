@@ -19,13 +19,15 @@ interface Props {
   onion: boolean;
   onOnion(value: boolean): void;
   onPlay(): void;
+  onSpeed(value: number): void;
+  onMotion(): void;
+  onPreview(): void;
   onSelect(index: number): void;
   onDuplicate(): void;
   onBlank(): void;
   onFrames(): void;
-  onTools(): void;
-  onMore(): void;
-  onSend(): void;
+  onTransform(): void;
+  onSend?(): void;
   onCopy(): void;
   onCut(): void;
   onPaste(): void;
@@ -36,8 +38,8 @@ interface Props {
   redo(): void;
   canUndo: boolean;
   canRedo: boolean;
-  /** Tools kept in view above the canvas where the screen has room for them. */
-  rail?: ReactNode;
+  tools: ReactNode;
+  settings: ReactNode;
   canvas: Omit<
     MobileCanvasProps,
     "frame" | "onionFrame" | "disabled" | "viewRequest" | "onZoomChange"
@@ -70,207 +72,154 @@ export default function DrawingWorkspace(p: Props) {
   }, [shown, p.message.frames.length, p.focus]);
   const view = (scale: ViewRequest["scale"]) =>
     setRequest((r) => ({ serial: r.serial + 1, scale }));
-  const play = (
-    <button
-      className="studio-action"
-      aria-label={p.playing ? "Pause Preview" : "Play Preview"}
-      onClick={p.onPlay}
-    >
-      <StudioIcon name={p.playing ? "pause" : "play"} />
-      <span>{p.playing ? "Pause" : "Play"}</span>
-    </button>
-  );
-  const history = (
-    <>
-      <button
-        aria-label="Undo"
-        disabled={!p.canUndo || p.playing}
-        onClick={p.undo}
-      >
-        <StudioIcon name="undo" />
-      </button>
-      <button
-        aria-label="Redo"
-        disabled={!p.canRedo || p.playing}
-        onClick={p.redo}
-      >
-        <StudioIcon name="redo" />
-      </button>
-    </>
-  );
-  const badge = (
-    <MiniBadge
-      message={p.playing ? p.message : { ...p.message, frames: [frame] }}
-      step={p.playing ? p.step : undefined}
-      playing={p.playing}
-      brightness={p.brightness}
-    />
-  );
+  const placement = p.canvas.placement;
+  const full = p.message.frames.length >= ANIMATION_MAX_FRAMES;
+
   return (
     <section
-      className={`mobile-studio${p.focus ? " studio-focus" : ""}${p.playing ? " studio-playing" : ""}`}
+      className={`mobile-studio${p.focus ? " studio-focus" : ""}`}
       aria-label="Drawing Workspace"
     >
-      {p.focus ? (
-        <div className="studio-focus-bar">
-          <button aria-label="Exit Focus" onClick={() => p.onFocus(false)}>
-            <StudioIcon name="collapse" />
-          </button>
-          <div className="studio-focus-monitor">{badge}</div>
-          {history}
-        </div>
-      ) : (
-        <div className="studio-monitor">
-          <div className="studio-monitor-display">{badge}</div>
-          <button
-            className="studio-action"
-            aria-label="Send to Badge"
-            onClick={p.onSend}
-          >
-            <StudioIcon name="send" />
-            <span>Send</span>
-          </button>
-        </div>
-      )}
-      <div
-        className="studio-controls"
-        role="toolbar"
-        aria-label={
-          p.canvas.tool === "select" ? "Selected Pixels" : "Playback and Frames"
-        }
-      >
-        {p.canvas.tool === "select" ? (
-          <>
+      <div className="studio-preview-controls">
+        {!p.focus && (
+          <div className="studio-monitor">
             <button
-              className="studio-action"
+              className="studio-monitor-display"
+              aria-label="Preview Slot"
+              onClick={p.onPreview}
+            >
+              <MiniBadge
+                message={
+                  p.playing ? p.message : { ...p.message, frames: [frame] }
+                }
+                step={p.playing ? p.step : undefined}
+                playing={p.playing}
+                brightness={p.brightness}
+              />
+              <span>Preview</span>
+            </button>
+            {p.onSend && (
+              <button aria-label="Send to Badge" onClick={p.onSend}>
+                <StudioIcon name="send" /> Send
+              </button>
+            )}
+          </div>
+        )}
+        <div className="studio-controls" role="toolbar" aria-label="Playback">
+          <button
+            aria-label={p.playing ? "Pause Preview" : "Play Preview"}
+            onClick={p.onPlay}
+          >
+            <StudioIcon name={p.playing ? "pause" : "play"} />
+            {p.playing ? "Pause" : "Play"}
+          </button>
+          {animation && (
+            <>
+              <label className="studio-speed">
+                <span>Speed</span>
+                <select
+                  aria-label="Playback Speed"
+                  value={p.message.speed}
+                  onChange={(e) => p.onSpeed(Number(e.target.value))}
+                >
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <option key={i} value={i + 1}>
+                      {i + 1}/8
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                aria-label="Onion Skin"
+                aria-pressed={p.onion}
+                disabled={p.playing || shown === 0}
+                onClick={() => p.onOnion(!p.onion)}
+              >
+                <StudioIcon name="onion" /> Onion
+              </button>
+            </>
+          )}
+          <button onClick={p.onMotion}>Motion</button>
+        </div>
+      </div>
+      <div className="studio-drawing-controls">
+        <div
+          className="studio-tool-rail"
+          role="toolbar"
+          aria-label="Drawing Tools"
+        >
+          {p.tools}
+        </div>
+        {placement ? (
+          <div
+            className="studio-tool-settings studio-placement"
+            role="toolbar"
+            aria-label="Artwork Placement"
+          >
+            <button onClick={() => placement.onCommit(placement.point)}>
+              Place {placement.kind}
+            </button>
+            <button onClick={placement.onCancel}>Cancel Placement</button>
+          </div>
+        ) : p.canvas.tool === "select" ? (
+          <div
+            className="studio-tool-settings"
+            role="toolbar"
+            aria-label="Selected Pixels"
+          >
+            <button
               aria-label="Copy Pixels"
-              disabled={!p.canvas.selection}
+              disabled={p.playing || !p.canvas.selection}
               onClick={() => {
                 p.onCopy();
                 setNotice("Copied Pixels");
               }}
             >
-              <StudioIcon name="copy" />
-              <span>Copy</span>
+              <StudioIcon name="copy" /> Copy
             </button>
             <button
-              className="studio-action"
               aria-label="Cut Pixels"
-              disabled={!p.canvas.selection}
+              disabled={p.playing || !p.canvas.selection}
               onClick={() => {
                 p.onCut();
                 setNotice("Cut Pixels");
               }}
             >
-              <StudioIcon name="cut" />
-              <span>Cut</span>
+              <StudioIcon name="cut" /> Cut
             </button>
             <button
-              className="studio-action"
               aria-label="Paste Pixels"
-              disabled={!p.hasClipboard}
+              disabled={p.playing || !p.hasClipboard}
               onClick={() => {
                 p.onPaste();
                 setNotice("Pasted Pixels");
               }}
             >
-              <StudioIcon name="paste" />
-              <span>Paste</span>
+              <StudioIcon name="paste" /> Paste
             </button>
             <button
-              className="studio-action"
               aria-label="Selection Options"
+              disabled={p.playing}
               onClick={p.onSelectionTools}
             >
-              <StudioIcon name="more" />
-              <span>Options</span>
+              <StudioIcon name="more" /> Options
             </button>
-            <button
-              className="studio-action"
-              aria-label="Finish Selection"
-              onClick={p.onSelectionDone}
-            >
-              <StudioIcon name="check" />
-              <span>Done</span>
+            <button aria-label="Finish Selection" onClick={p.onSelectionDone}>
+              <StudioIcon name="check" /> Done
             </button>
-          </>
+          </div>
         ) : (
-          <>
-            {" "}
-            {animation && p.focus ? (
-              <button
-                aria-label="Previous Frame"
-                disabled={shown === 0}
-                onClick={() => p.onSelect(shown - 1)}
-              >
-                <StudioIcon name="left" />
-              </button>
-            ) : (
-              play
-            )}
-            {animation ? (
-              <>
-                {p.focus && play}
-                <button
-                  className="studio-frame-position"
-                  aria-label="Frame Options"
-                  onClick={p.onFrames}
-                >
-                  <span>
-                    Frame {shown + 1}/{p.message.frames.length}
-                  </span>
-                  <small>Speed {p.message.speed}/8</small>
-                </button>
-                <button
-                  className="studio-action"
-                  aria-label="Onion Skin"
-                  aria-pressed={p.onion && shown > 0}
-                  disabled={p.playing || shown === 0}
-                  onClick={() => p.onOnion(!p.onion)}
-                >
-                  <StudioIcon name="onion" />
-                  <span>Onion</span>
-                </button>
-                {p.focus ? (
-                  <button
-                    aria-label="Next Frame"
-                    disabled={shown === p.message.frames.length - 1}
-                    onClick={() => p.onSelect(shown + 1)}
-                  >
-                    <StudioIcon name="right" />
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      className="studio-action"
-                      aria-label="Duplicate Frame"
-                      disabled={p.message.frames.length >= ANIMATION_MAX_FRAMES}
-                      onClick={p.onDuplicate}
-                    >
-                      <StudioIcon name="copy" />
-                      <span>Duplicate</span>
-                    </button>
-                    <button
-                      className="studio-action"
-                      aria-label="Add Frame"
-                      disabled={p.message.frames.length >= ANIMATION_MAX_FRAMES}
-                      onClick={p.onBlank}
-                    >
-                      <StudioIcon name="plus" />
-                      <span>New</span>
-                    </button>
-                  </>
-                )}
-              </>
-            ) : (
-              <span className="studio-frame-caption">
-                {p.playing ? "Playing Preview" : "Display Preview"}
-              </span>
-            )}
-          </>
+          p.settings && (
+            <div
+              className="studio-tool-settings"
+              role="group"
+              aria-label="Tool Settings"
+            >
+              {p.settings}
+            </div>
+          )
         )}
       </div>
-      {!p.focus && p.rail}
       <main className="studio-canvas">
         <MobileCanvas
           {...p.canvas}
@@ -293,52 +242,85 @@ export default function DrawingWorkspace(p: Props) {
           <span className="studio-playback-hint">Pause to Draw</span>
         )}
       </main>
-      {animation && !p.focus && (
+      <div className="studio-frames">
+        {animation && !p.focus && (
+          <div
+            className="studio-filmstrip"
+            ref={thumbnails}
+            aria-label="Animation Frames"
+          >
+            {p.message.frames.map((f, i) => (
+              <button
+                key={i}
+                data-frame={i}
+                aria-label={`Frame ${i + 1}`}
+                aria-pressed={shown === i}
+                onClick={() => p.onSelect(i)}
+              >
+                <MiniBadge message={{ ...p.message, frames: [f] }} />
+                <span>{i + 1}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div
-          className="studio-filmstrip"
-          ref={thumbnails}
-          aria-label="Animation Frames"
+          className="studio-frame-actions"
+          role="toolbar"
+          aria-label={animation ? "Frame Actions" : "Drawing Actions"}
         >
-          {p.message.frames.map((f, i) => (
-            <button
-              key={i}
-              data-frame={i}
-              aria-label={`Frame ${i + 1}`}
-              aria-pressed={shown === i}
-              onClick={() => p.onSelect(i)}
-            >
-              <MiniBadge message={{ ...p.message, frames: [f] }} />
-              <span>{i + 1}</span>
-            </button>
-          ))}
+          {animation && (
+            <>
+              {p.focus && (
+                <button
+                  aria-label="Previous Frame"
+                  disabled={shown === 0}
+                  onClick={() => p.onSelect(shown - 1)}
+                >
+                  <StudioIcon name="left" />
+                </button>
+              )}
+              <span className="studio-frame-position">
+                Frame {shown + 1}/{p.message.frames.length}
+              </span>
+              {p.focus ? (
+                <button
+                  aria-label="Next Frame"
+                  disabled={shown === p.message.frames.length - 1}
+                  onClick={() => p.onSelect(shown + 1)}
+                >
+                  <StudioIcon name="right" />
+                </button>
+              ) : (
+                <>
+                  <button
+                    aria-label="Add Frame"
+                    disabled={full}
+                    onClick={p.onBlank}
+                  >
+                    <StudioIcon name="plus" /> New
+                  </button>
+                  <button
+                    aria-label="Duplicate Frame"
+                    disabled={full}
+                    onClick={p.onDuplicate}
+                  >
+                    <StudioIcon name="copy" /> Duplicate
+                  </button>
+                  <button aria-label="Frame Options" onClick={p.onFrames}>
+                    <StudioIcon name="more" /> Frame
+                  </button>
+                </>
+              )}
+            </>
+          )}
+          <button onClick={p.onTransform}>Transform</button>
         </div>
-      )}
+      </div>
       <footer
         className="studio-view-tools"
         role="toolbar"
-        aria-label="Canvas Controls"
+        aria-label="Canvas View"
       >
-        <button
-          className="studio-tool studio-labeled"
-          aria-label="Drawing Tool"
-          onClick={p.onTools}
-        >
-          {
-            (
-              {
-                pencil: "Draw",
-                eraser: "Erase",
-                line: "Line",
-                rect: "Box",
-                ellipse: "Oval",
-                fill: "Fill",
-                select: "Select",
-                pan: "Move",
-              } as const
-            )[p.canvas.tool]
-          }
-          <small>Tools</small>
-        </button>
         <div className="studio-zoom" role="group" aria-label="Canvas Zoom">
           <button
             aria-label="Fit Badge"
@@ -363,21 +345,30 @@ export default function DrawingWorkspace(p: Props) {
           </button>
         </div>
         <button
-          className="studio-labeled"
-          aria-label={p.focus ? "Show Frames" : "Focus Canvas"}
+          aria-label={p.focus ? "Exit Focus" : "Focus Canvas"}
           onClick={() => p.onFocus(!p.focus)}
         >
-          <StudioIcon name={p.focus ? "collapse" : "expand"} />
-          <small>{p.focus ? "Frames" : "Focus"}</small>
+          <StudioIcon name={p.focus ? "collapse" : "expand"} />{" "}
+          {p.focus ? "Exit Focus" : "Focus"}
         </button>
-        <button
-          className="studio-labeled"
-          aria-label="Canvas Options"
-          onClick={p.onMore}
-        >
-          <StudioIcon name="more" />
-          <small>More</small>
-        </button>
+        {p.focus && (
+          <>
+            <button
+              aria-label="Undo"
+              disabled={!p.canUndo || p.playing}
+              onClick={p.undo}
+            >
+              <StudioIcon name="undo" />
+            </button>
+            <button
+              aria-label="Redo"
+              disabled={!p.canRedo || p.playing}
+              onClick={p.redo}
+            >
+              <StudioIcon name="redo" />
+            </button>
+          </>
+        )}
       </footer>
     </section>
   );
