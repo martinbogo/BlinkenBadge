@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dev:web": "BADGE_TARGET=web vite --port 5180",
-    "build:web": "tsc && BADGE_TARGET=web vite build --outDir dist-web"
+    "build:web": "tsc && BADGE_TARGET=web vite build --outDir dist-web",
+    "build:ios": "tsc && TAURI_ENV_PLATFORM=ios vite build --outDir dist-ios",
+    "build:android": "tsc && TAURI_ENV_PLATFORM=android vite build --outDir dist-android"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

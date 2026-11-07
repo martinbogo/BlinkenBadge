@@ -116,7 +116,7 @@ export default function BadgePreview({
           ctx.arc(cx, cy, r * 2.4, 0, Math.PI * 2);
           ctx.fill();
         }
-        ctx.fillStyle = lit ? pal.core : "#1a1d26";
+        ctx.fillStyle = lit ? pal.core : "#293445";
         ctx.globalAlpha = lit ? 0.55 + 0.45 * alpha : 1;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -124,12 +124,16 @@ export default function BadgePreview({
         ctx.globalAlpha = 1;
       }
     }
-
   }, [message, step, brightness, blinkOn, cell, led]);
 
   return (
     <div className="preview" ref={wrapRef}>
-      <canvas ref={canvasRef} className="preview-canvas" />
+      <canvas
+        ref={canvasRef}
+        className="preview-canvas"
+        role="img"
+        aria-label={`${message?.name ?? "Empty"}: 44 by 11 pixel display`}
+      />
       <div className="preview-meta">
         {!message && <span>no message selected</span>}
       </div>

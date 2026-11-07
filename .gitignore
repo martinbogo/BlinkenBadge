@@ -18,6 +18,16 @@ __pycache__/
 # Local Claude Code settings
 .claude/
 
+# Mobile signing material and local distribution artifacts.
+*.jks
+*.keystore
+*.p12
+*.p8
+*.mobileprovision
+**/keystore.properties
+**/key.properties
+/mobile-builds/
+
 # Documents and exports saved into the project root while testing. Scoped with
 # a leading slash so these never reach into badge-studio/ and hide something
 # that belongs in the repo.

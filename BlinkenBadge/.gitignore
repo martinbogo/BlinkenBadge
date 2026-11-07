@@ -25,3 +25,7 @@ dist-ssr
 
 # Browser build output, produced by `npm run build:web`.
 dist-web
+
+# Mobile frontend bundles
+dist-ios/
+dist-android/

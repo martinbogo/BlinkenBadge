@@ -12,13 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(not(target_os = "android"))]
+mod ble;
+#[cfg(target_os = "android")]
+#[path = "ble_android.rs"]
 mod ble;
 mod file_access;
 mod files;
 mod firmware;
 mod font;
+#[cfg(desktop)]
 mod menu;
+#[cfg(mobile)]
+mod menu {
+    pub fn rebuild(_: &tauri::AppHandle) {}
+}
 mod protocol;
+#[cfg(desktop)]
+mod usb;
+#[cfg(mobile)]
+#[path = "usb_mobile.rs"]
 mod usb;
 
 use serde::{Deserialize, Serialize};
@@ -196,41 +209,49 @@ fn render_text(text: String, face: Option<String>) -> Result<TextBitmap, String>
 /// Returns None if cancelled.
 #[tauri::command]
 async fn pick_image(app: AppHandle) -> Result<Option<String>, String> {
-    use base64::Engine;
-    use tauri_plugin_dialog::DialogExt;
-    let path = app
-        .dialog()
-        .file()
-        .add_filter("Image", &["png", "gif", "bmp", "jpg", "jpeg", "webp"])
-        .blocking_pick_file();
-    let Some(path) = path else { return Ok(None) };
-    let path = path
-        .into_path()
-        .map_err(|e| format!("Could not resolve that file: {e}"))?;
-    let bytes = file_access::read_bounded(&path, file_access::MAX_IMAGE_BYTES)?;
-    let mime = match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase()
-        .as_str()
+    #[cfg(mobile)]
+    return files::mobile_image(app).await;
+    #[cfg(desktop)]
     {
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "bmp" => "image/bmp",
-        "webp" => "image/webp",
-        "jpg" | "jpeg" => "image/jpeg",
-        other => return Err(format!("Unsupported image type: .{other}")),
-    };
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(Some(format!("data:{mime};base64,{b64}")))
+        use base64::Engine;
+        use tauri_plugin_dialog::DialogExt;
+        let path = app
+            .dialog()
+            .file()
+            .add_filter("Image", &["png", "gif", "bmp", "jpg", "jpeg", "webp"])
+            .blocking_pick_file();
+        let Some(path) = path else { return Ok(None) };
+        let path = path
+            .into_path()
+            .map_err(|e| format!("Could not resolve that file: {e}"))?;
+        let bytes = file_access::read_bounded(&path, file_access::MAX_IMAGE_BYTES)?;
+        let mime = match path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "png" => "image/png",
+            "gif" => "image/gif",
+            "bmp" => "image/bmp",
+            "webp" => "image/webp",
+            "jpg" | "jpeg" => "image/jpeg",
+            other => return Err(format!("Unsupported image type: .{other}")),
+        };
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        Ok(Some(format!("data:{mime};base64,{b64}")))
+    }
 }
 
 #[tauri::command]
-async fn ble_scan(timeout_ms: Option<u64>) -> Result<Vec<ble::BadgeInfo>, String> {
+async fn ble_scan(_app: AppHandle, timeout_ms: Option<u64>) -> Result<Vec<ble::BadgeInfo>, String> {
     let _guard = DEVICE_OPERATION
         .try_lock()
         .map_err(|_| "A device operation is already running.")?;
+    #[cfg(target_os = "android")]
+    return ble::scan(_app, timeout_ms.unwrap_or(6000).clamp(100, 10000)).await;
+    #[cfg(not(target_os = "android"))]
     ble::scan(timeout_ms.unwrap_or(6000).clamp(100, 10000))
         .await
         .map_err(|e| e.to_string())
@@ -294,6 +315,17 @@ async fn send_to_badge(
     })?;
     // Validate before opening a connection. Encode again after firmware detection.
     encode(&messages, brightness, Firmware::default()).map_err(|message| SendError { message })?;
+    #[cfg(target_os = "android")]
+    {
+        let stock = encode(&messages, brightness, Firmware::Stock)
+            .map_err(|message| SendError { message })?;
+        let magic = encode(&messages, brightness, Firmware::BadgeMagic)
+            .map_err(|message| SendError { message })?;
+        return ble::send(app, device_id, stock, magic)
+            .await
+            .map_err(|message| SendError { message });
+    }
+    #[cfg(not(target_os = "android"))]
     ble::send(
         |fw| encode(&messages, brightness, fw),
         device_id.as_deref(),
@@ -311,15 +343,19 @@ static DEVICE_OPERATION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(file_access::FileAccess::default())
-        .setup(|app| {
-            usb::watch(app.handle().clone());
-            menu::install(app.handle())?;
-            pending_from_argv();
+        .setup(|_app| {
+            #[cfg(desktop)]
+            {
+                usb::watch(_app.handle().clone());
+                menu::install(_app.handle())?;
+                pending_from_argv();
+            }
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             render_text,
             font_metrics,
@@ -329,6 +365,8 @@ pub fn run() {
             send_to_badge,
             send_to_badge_usb,
             files::pick_open,
+            files::mobile_import,
+            files::mobile_export,
             files::pick_save,
             files::read_text,
             files::write_text,
@@ -339,7 +377,10 @@ pub fn run() {
             files::recent_clear,
             take_pending_files,
             confirm_exit,
-        ])
+        ]);
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(ble::init());
+    builder
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| match event {
@@ -396,6 +437,7 @@ fn remember_pending(app: &AppHandle, path: String) {
 }
 
 /// Windows and Linux pass the file as an argument instead of an event.
+#[cfg(desktop)]
 fn pending_from_argv() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Ok(mut q) = PENDING.lock() {

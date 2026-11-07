@@ -29,7 +29,7 @@ function patterned(width = 44): Message {
   const m = newMessage("fixed");
   m.frames = [
     Array.from({ length: BADGE_HEIGHT }, (_, y) =>
-      Array.from({ length: width }, (_, x) => (x + y) % 3 === 0)
+      Array.from({ length: width }, (_, x) => (x + y) % 3 === 0),
     ),
   ];
   m.width = width;
@@ -37,7 +37,10 @@ function patterned(width = 44): Message {
   return m;
 }
 
-const project = (messages: Message[]): Project => ({ brightness: 100, messages });
+const project = (messages: Message[]): Project => ({
+  brightness: 100,
+  messages,
+});
 
 /**
  * The same document in the format version 1 wrote, pretty-printed exactly as
@@ -64,11 +67,33 @@ function asV1(p: Project): string {
       })),
     },
     null,
-    2
+    2,
   );
 }
 
 describe("version 2 documents", () => {
+  it("retains editable text together with its rendered pixels", () => {
+    const m = { ...patterned(), text: { value: "Hello", face: "sans" } };
+    const back = parseProject(serializeProject(project([m]))).messages[0];
+    expect(back.text).toEqual(m.text);
+    expect(back.frames).toEqual(m.frames);
+  });
+
+  it("ignores malformed text metadata without losing pixel artwork", () => {
+    const m = patterned();
+    for (const text of [
+      42,
+      { value: "Hello", face: null },
+      { value: "x".repeat(65537), face: "serif" },
+    ]) {
+      const raw = JSON.parse(serializeProject(project([m])));
+      raw.messages[0].text = text;
+      const back = parseProject(JSON.stringify(raw)).messages[0];
+      expect(back.text).toBeUndefined();
+      expect(back.frames).toEqual(m.frames);
+    }
+  });
+
   it("round-trips a project without losing a pixel", () => {
     const p = project([patterned()]);
     const back = parseProject(serializeProject(p));
@@ -85,7 +110,8 @@ describe("version 2 documents", () => {
   });
 
   it("leaves out the flags at their defaults and the derived width", () => {
-    const stored = JSON.parse(serializeProject(project([patterned()]))).messages[0];
+    const stored = JSON.parse(serializeProject(project([patterned()])))
+      .messages[0];
     expect(stored).not.toHaveProperty("blink");
     expect(stored).not.toHaveProperty("ants");
     expect(stored).not.toHaveProperty("enabled");
@@ -148,10 +174,12 @@ describe("version 1 documents still open", () => {
 
 describe("mixed and damaged files", () => {
   it("reads a file whose frames were half converted by hand", () => {
-    const doc = JSON.parse(serializeProject(project([patterned(4), patterned(4)])));
+    const doc = JSON.parse(
+      serializeProject(project([patterned(4), patterned(4)])),
+    );
     // One frame left in the old shape, which is what a partial edit looks like.
     doc.messages[1].frames[0] = doc.messages[1].frames[0].map((row: string) =>
-      [...row].map((c) => c === "#")
+      [...row].map((c) => c === "#"),
     );
     const back = parseProject(JSON.stringify(doc));
     expect(back.messages[1].frames[0]).toEqual(back.messages[0].frames[0]);
@@ -173,7 +201,9 @@ describe("mixed and damaged files", () => {
   it("rejects frames of inconsistent width", () => {
     const doc = JSON.parse(serializeProject(project([patterned(8)])));
     doc.messages[0].frames[0][3] = "###";
-    expect(() => parseProject(JSON.stringify(doc))).toThrow(/inconsistent size/);
+    expect(() => parseProject(JSON.stringify(doc))).toThrow(
+      /inconsistent size/,
+    );
   });
 
   it("rejects a frame with the wrong number of rows", () => {
@@ -186,7 +216,9 @@ describe("mixed and damaged files", () => {
 describe("untrusted document limits", () => {
   it("rejects duplicate IDs rather than editing several messages together", () => {
     const m = patterned();
-    expect(() => parseProject(serializeProject(project([m, m])))).toThrow(/duplicate/);
+    expect(() => parseProject(serializeProject(project([m, m])))).toThrow(
+      /duplicate/,
+    );
   });
   it("rejects excessively wide rows before decoding them", () => {
     const raw = JSON.parse(serializeProject(project([patterned(4)])));
