@@ -77,7 +77,9 @@ export default function Sheet({
     // Keep focus in the sheet when switching to a confirmation or submenu.
     const dialog = ref.current!;
     (
-      dialog.querySelector<HTMLElement>("button:not(:disabled)") ?? dialog
+      dialog.querySelector<HTMLElement>("[data-initial-focus]") ??
+      dialog.querySelector<HTMLElement>("button:not(:disabled)") ??
+      dialog
     ).focus();
   }, [title]);
   return (

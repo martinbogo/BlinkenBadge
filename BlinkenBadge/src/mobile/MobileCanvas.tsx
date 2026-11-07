@@ -55,6 +55,14 @@ export interface MobileCanvasProps {
   onSelectionChange?(rect: Rect | null): void;
   brushSize?: number;
   filled?: boolean;
+  placement?: {
+    rows: Frame;
+    point: Point;
+    kind: "Text" | "Symbol";
+    onMove(point: Point): void;
+    onCommit(point: Point): void;
+    onCancel(): void;
+  };
   disabled?: boolean;
   viewRequest?: ViewRequest;
   onZoomChange?(scale: number): void;
@@ -68,11 +76,13 @@ export default function MobileCanvas({
   onSelectionChange,
   brushSize = 1,
   filled = false,
+  placement,
   disabled = false,
   viewRequest,
   onZoomChange,
 }: MobileCanvasProps) {
   const host = useRef<HTMLDivElement>(null);
+  const canvas = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ width: 300, height: 400 });
   const [view, setView] = useState<View>({ cell: 26, offset: 0, offsetY: 0 });
   const pointers = useRef(new Map<number, Point>());
@@ -193,6 +203,9 @@ export default function MobileCanvas({
   useEffect(() => {
     cancelInteraction();
   }, [disabled]);
+  useEffect(() => {
+    if (placement) canvas.current?.focus();
+  }, [placement?.rows]);
   const top = Math.max(12, (size.height - 11 * view.cell) / 2);
   const left = Math.max(0, (size.width - width * view.cell) / 2);
   const point = (p: Point): Point => ({
@@ -265,7 +278,7 @@ export default function MobileCanvas({
     Math.ceil((view.offset + size.width) / view.cell),
   );
   const shown = preview ?? frame;
-  const selected = marquee ?? selection;
+  const selected = placement ? null : (marquee ?? selection);
   return (
     <div className="mobile-canvas-host" ref={host}>
       <span className="mobile-zoom-label">
@@ -274,16 +287,19 @@ export default function MobileCanvas({
           ? view.cell > fitCell + 0.1
             ? "Two Fingers to Move"
             : "Full Badge View"
-          : tool === "select" && selection
-            ? "Drag Inside to Move"
-            : toolHint[tool]}
+          : placement
+            ? "Tap a Pixel to Place"
+            : tool === "select" && selection
+              ? "Drag Inside to Move"
+              : toolHint[tool]}
       </span>
       <svg
+        ref={canvas}
         className="mobile-pixel-canvas"
         width="100%"
         height="100%"
         role="img"
-        aria-label={`${width} by 11 pixel canvas; ${tool}`}
+        aria-label={`${width} by 11 pixel canvas; ${placement ? `place ${placement.kind.toLowerCase()}` : tool}`}
         aria-describedby="mobile-canvas-help"
         aria-disabled={disabled}
         tabIndex={0}
@@ -309,6 +325,11 @@ export default function MobileCanvas({
             return;
           }
           if (gesture.current) return;
+          if (placement && !disabled) {
+            const cell = point(p);
+            if (e.button === 0 && inside(cell)) placement.onMove(cell);
+            return;
+          }
           if (tool === "pan" || disabled) {
             followsFit.current = false;
             pan.current = {
@@ -387,7 +408,10 @@ export default function MobileCanvas({
                 offsetY: pan.current.offsetY - p.y + pan.current.y,
               }),
             );
-          else if (!gesture.current && tool !== "fill") {
+          else if (!gesture.current && placement) {
+            const cell = point(p);
+            if (inside(cell)) placement.onMove(cell);
+          } else if (!gesture.current && tool !== "fill") {
             const cell = point(p);
             paint(cell);
             if (
@@ -402,8 +426,18 @@ export default function MobileCanvas({
           }
         }}
         onPointerUp={(e) => {
-          if (!gesture.current && !pan.current && tool !== "fill")
-            paint(point(position(e)));
+          if (
+            !gesture.current &&
+            !pan.current &&
+            pointers.current.has(e.pointerId)
+          ) {
+            const cell = point(position(e));
+            if (placement && !disabled) {
+              if (e.button === 0 && inside(cell)) placement.onCommit(cell);
+            } else if (tool !== "fill") {
+              paint(cell);
+            }
+          }
           finish();
           pointers.current.delete(e.pointerId);
           if (!pointers.current.size) {
@@ -421,7 +455,12 @@ export default function MobileCanvas({
         }}
         onKeyDown={(e) => {
           if (disabled) return;
-          const p = cursor ?? { x: first, y: 0 };
+          if (e.key === "Escape" && placement) {
+            e.preventDefault();
+            placement.onCancel();
+            return;
+          }
+          const p = placement?.point ?? cursor ?? { x: first, y: 0 };
           if (
             ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)
           ) {
@@ -448,7 +487,8 @@ export default function MobileCanvas({
                 ),
               ),
             };
-            setCursor(next);
+            if (placement) placement.onMove(next);
+            else setCursor(next);
             if (next.x < first || next.x >= last)
               setView(
                 normalize({
@@ -458,34 +498,40 @@ export default function MobileCanvas({
               );
           } else if (e.key === " " || e.key === "Enter") {
             e.preventDefault();
-            onChange(applyPoints(frame, [p], !frame[p.y][p.x]), true);
+            if (placement) placement.onCommit(p);
+            else onChange(applyPoints(frame, [p], !frame[p.y][p.x]), true);
           }
         }}
       >
         {shown.flatMap((row, y) =>
-          row
-            .slice(first, last)
-            .map((lit, i) => (
+          row.slice(first, last).map((lit, i) => {
+            const x = i + first;
+            const ghost =
+              placement?.rows[y - placement.point.y]?.[x - placement.point.x];
+            const onion = !lit && !ghost && onionFrame?.[y]?.[x];
+            return (
               <rect
-                key={`${i + first}:${y}`}
-                data-onion={
-                  !lit && onionFrame?.[y]?.[i + first] ? "true" : undefined
-                }
-                x={left + (i + first) * view.cell - view.offset}
+                key={`${x}:${y}`}
+                data-onion={onion ? "true" : undefined}
+                data-stamp={ghost ? "true" : undefined}
+                x={left + x * view.cell - view.offset}
                 y={top + y * view.cell - view.offsetY}
                 width={view.cell}
                 height={view.cell}
                 fill={
-                  lit
-                    ? "var(--mobile-led)"
-                    : onionFrame?.[y]?.[i + first]
-                      ? "var(--mobile-onion)"
-                      : "var(--mobile-pixel)"
+                  ghost
+                    ? "var(--mobile-accent)"
+                    : lit
+                      ? "var(--mobile-led)"
+                      : onion
+                        ? "var(--mobile-onion)"
+                        : "var(--mobile-pixel)"
                 }
                 stroke="var(--mobile-grid)"
                 strokeWidth={view.cell >= 12 ? 0.7 : 0.4}
               />
-            )),
+            );
+          }),
         )}
         {width > 44 && (
           <rect
@@ -573,10 +619,9 @@ export default function MobileCanvas({
         </div>
       )}
       <span id="mobile-canvas-help" className="mobile-sr">
-        With Draw, tap a pixel to toggle it. Start a stroke on a dark pixel to
-        draw, or a lit pixel to erase. Erase always clears pixels. Two fingers
-        zoom and move the canvas. Use arrow keys and Space to edit pixels with a
-        keyboard.
+        {placement
+          ? "Tap a pixel to place the artwork there. Use arrow keys to move the preview, Enter to place it, or Escape to cancel."
+          : "With Draw, tap a pixel to toggle it. Erase always clears pixels. Two fingers zoom and move the canvas. Use arrow keys and Space to edit pixels with a keyboard."}
       </span>
     </div>
   );

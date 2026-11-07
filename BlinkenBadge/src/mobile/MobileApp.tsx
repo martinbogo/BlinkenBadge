@@ -29,7 +29,7 @@ import {
   measureText,
   pictographs,
 } from "../font";
-import { clearRect, extractRect, pasteBlock, type Rect } from "../draw";
+import { clearRect, extractRect, pasteBlock, type Point, type Rect } from "../draw";
 import { importImage } from "../importImage";
 import { MAX_BITMAP_WIDTH } from "../limits";
 import { ledPalette } from "../led";
@@ -49,6 +49,7 @@ import {
   LED_ORDER,
   MAX_BYTE_COLUMNS,
   type Frame,
+  type TextBitmap,
   type LedColor,
   MAX_MESSAGES,
   MODES,
@@ -75,8 +76,6 @@ type Panel =
   | "add"
   | "font"
   | "motion"
-  | "tool"
-  | "canvas"
   | "message"
   | "confirm-new"
   | "confirm-import"
@@ -87,6 +86,7 @@ type Panel =
   | "stamp"
   | "symbols"
   | "stamp-symbols"
+  | "canvas-symbols"
   | "image"
   | "color"
   | "confirm-mode"
@@ -98,21 +98,18 @@ const TOOL_CHOICES = [
   ["eraser", "Erase"],
   ["fill", "Fill"],
   ["line", "Line"],
-  ["rect", "Rectangle"],
-  ["ellipse", "Ellipse"],
+  ["rect", "Box"],
+  ["ellipse", "Oval"],
   ["select", "Select"],
-  ["pan", "Move Canvas"],
+  ["pan", "Move"],
 ] as const;
-const RAIL_LABELS: Record<MobileTool, string> = {
-  pencil: "Draw",
-  eraser: "Erase",
-  fill: "Fill",
-  line: "Line",
-  rect: "Box",
-  ellipse: "Oval",
-  select: "Select",
-  pan: "Move",
-};
+
+interface PendingStamp {
+  bitmap: TextBitmap;
+  point: Point;
+  kind: "Text" | "Symbol";
+}
+
 const slotKind = (m: Message) =>
   m.text ? "Text" : m.mode === "animation" ? "Animation" : "Drawing";
 
@@ -134,6 +131,7 @@ export default function MobileApp() {
   const [selection, setSelection] = useState<Rect | null>(null);
   const [clipboard, setClipboard] = useState<Frame | null>(null);
   const [stampText, setStampText] = useState("");
+  const [pendingStamp, setPendingStamp] = useState<PendingStamp | null>(null);
   const [stampFace, setStampFace] = useState("serif");
   const [symbols, setSymbols] = useState<string[]>([]);
   const [roomForSymbols, setRoomForSymbols] = useState(false);
@@ -259,6 +257,7 @@ export default function MobileApp() {
     previewScope?: "slot" | "sequence",
   ) => {
     forceTextRender.current = false;
+    setPendingStamp(null);
     setDrawingFocus(false);
     if (next === "project" && navigationDepth.current > 0) {
       setPanel(null);
@@ -418,12 +417,14 @@ export default function MobileApp() {
   }, [active.frames.length]);
   useEffect(() => platform.onSendProgress(setProgress), []);
   useEffect(() => setSelection(null), [active.id, frameIndex]);
+  useEffect(() => setPendingStamp(null), [active.id, active.mode, frameIndex, route]);
 
   const shownFrame =
     playing && active.mode === "animation"
       ? step % active.frames.length
       : Math.min(frameIndex, active.frames.length - 1);
   const selectFrame = (index: number) => {
+    setPendingStamp(null);
     setPlaying(false);
     setFrameIndex(index);
     setStep(index);
@@ -433,10 +434,10 @@ export default function MobileApp() {
     const index = shownFrame;
     setPlaying(false);
     setFrameIndex(index);
-    setSelection(null);
     return index;
   };
   const toggleDrawingPlayback = () => {
+    setPendingStamp(null);
     if (playing) pauseFrame();
     else {
       setStep(active.mode === "animation" ? frameIndex : 0);
@@ -601,40 +602,56 @@ export default function MobileApp() {
     setPanel(null);
     if (restoreFocus) symbolAnchor.current?.focus();
   }, []);
-  const insertStamp = async () => {
+  const prepareStamp = async (
+    text: string,
+    font: string,
+    kind: PendingStamp["kind"],
+  ) => {
     setRendering(true);
     setError(null);
     try {
-      const bitmap = await platform.renderText(stampText, stampFace);
-      const ox = selection?.x0 ?? 0,
-        oy = selection?.y0 ?? 0;
-      update(active.id, (m) => {
-        const width =
-          m.mode === "animation"
-            ? BADGE_WIDTH
-            : Math.min(MAX_BITMAP_WIDTH, Math.max(m.width, ox + bitmap.width));
-        return {
-          ...m,
-          text: undefined,
-          width,
-          frames: m.frames.map((f, i) =>
-            i === frameIndex
-              ? resizeFrame(
-                  stamp(resizeFrame(f, width), bitmap.rows, ox, oy, false),
-                  width,
-                )
-              : resizeFrame(f, width),
-          ),
-        };
-      });
-      if (bitmap.missing.length)
+      const bitmap = await platform.renderText(text, font);
+      if (bitmap.missing.length) {
         setError(`Some characters have no glyph: ${bitmap.missing.join(" ")}.`);
+      }
+      if (bitmap.rows.some((row) => row.some(Boolean))) {
+        setPendingStamp({
+          bitmap,
+          point: { x: selection?.x0 ?? 0, y: selection?.y0 ?? 0 },
+          kind,
+        });
+      }
       setPanel(null);
     } catch (e) {
       setError(String(e));
     } finally {
       setRendering(false);
     }
+  };
+  const placeStamp = ({ x, y }: Point) => {
+    if (!pendingStamp) return;
+    const { bitmap } = pendingStamp;
+    update(active.id, (m) => {
+      const width = m.mode === "animation"
+        ? BADGE_WIDTH
+        : Math.min(MAX_BITMAP_WIDTH, Math.max(m.width, x + bitmap.width));
+      return {
+        ...m,
+        text: undefined,
+        width,
+        frames: m.frames.map((f, i) =>
+          i === frameIndex
+            ? resizeFrame(stamp(f, bitmap.rows, x, y), width)
+            : resizeFrame(f, width),
+        ),
+      };
+    });
+    setPendingStamp(null);
+  };
+  const openDrawingPanel = (next: Panel) => {
+    pauseFrame();
+    setPendingStamp(null);
+    setPanel(next);
   };
   const insertImage = async () => {
     setBusy("file");
@@ -775,8 +792,6 @@ export default function MobileApp() {
     add: "Add Slot",
     font: "Font",
     motion: "Motion",
-    tool: "Drawing Tool",
-    canvas: "Canvas",
     message: "Slot",
     frames: "Frame",
     selection: "Selection",
@@ -784,6 +799,7 @@ export default function MobileApp() {
     stamp: "Stamp Text",
     symbols: "Badge Symbols",
     "stamp-symbols": "Badge Symbols",
+    "canvas-symbols": "Badge Symbols",
     image: "Import Image",
     color: "LED Color",
     "confirm-mode": "Change Mode",
@@ -931,72 +947,83 @@ export default function MobileApp() {
           onSelect={selectFrame}
           onDuplicate={duplicateFrame}
           onBlank={addBlankFrame}
-          onFrames={() => {
-            pauseFrame();
-            setPanel("frames");
-          }}
-          onTools={() => {
-            pauseFrame();
-            setPanel("tool");
-          }}
-          onSend={sendScreen}
+          onSpeed={(speed) => update(active.id, (m) => ({ ...m, speed }))}
+          onMotion={() => openDrawingPanel("motion")}
+          onPreview={() => go("preview")}
+          onFrames={() => openDrawingPanel("frames")}
+          onTransform={() => openDrawingPanel("transform")}
+          onSend={wide ? undefined : sendScreen}
           onCopy={() => copySelection()}
           onCut={() => copySelection(true)}
           onPaste={pasteSelection}
           hasClipboard={!!clipboard}
-          onSelectionTools={() => {
-            pauseFrame();
-            setPanel("selection");
-          }}
+          onSelectionTools={() => openDrawingPanel("selection")}
           onSelectionDone={() => {
             setSelection(null);
             setTool("pencil");
           }}
-          onMore={() => {
-            pauseFrame();
-            setPanel("canvas");
-          }}
-          rail={
-            wide ? (
-              <div
-                className="studio-tool-rail"
-                role="toolbar"
-                aria-label="Drawing Tools"
+          tools={
+            <>
+              {TOOL_CHOICES.map(([id, label]) => (
+                <button
+                  key={id}
+                  aria-pressed={!pendingStamp && tool === id}
+                  disabled={playing}
+                  onClick={() => {
+                    setPendingStamp(null);
+                    setTool(id);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                aria-haspopup="dialog"
+                disabled={playing}
+                onClick={() => openDrawingPanel("stamp")}
               >
-                {TOOL_CHOICES.map(([id]) => (
-                  <button
-                    key={id}
-                    aria-pressed={tool === id}
-                    disabled={playing}
-                    onClick={() => setTool(id)}
-                  >
-                    {RAIL_LABELS[id]}
-                  </button>
-                ))}
-                <div
-                  className="studio-rail-group"
-                  role="group"
+                Text
+              </button>
+              <button
+                aria-haspopup="dialog"
+                disabled={playing || !symbols.length}
+                onClick={() => openDrawingPanel("canvas-symbols")}
+              >
+                Symbols
+              </button>
+              <button
+                aria-haspopup="dialog"
+                disabled={playing}
+                onClick={() => openDrawingPanel("image")}
+              >
+                Image
+              </button>
+            </>
+          }
+          settings={
+            tool === "pencil" || tool === "eraser" || tool === "line" ? (
+              <label className="studio-brush-size">
+                Brush
+                <select
                   aria-label="Brush Size"
+                  disabled={playing}
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
                 >
                   {[1, 2, 3].map((n) => (
-                    <button
-                      key={n}
-                      aria-label={`Brush Size ${n} px`}
-                      aria-pressed={brushSize === n}
-                      onClick={() => setBrushSize(n)}
-                    >
-                      {n}px
-                    </button>
+                    <option key={n} value={n}>{n} px</option>
                   ))}
-                </div>
-                <button
-                  aria-pressed={filled}
-                  onClick={() => setFilled((f) => !f)}
-                >
-                  Filled
-                </button>
-              </div>
-            ) : undefined
+                </select>
+              </label>
+            ) : tool === "rect" || tool === "ellipse" ? (
+              <button
+                aria-pressed={filled}
+                disabled={playing}
+                onClick={() => setFilled((f) => !f)}
+              >
+                Filled
+              </button>
+            ) : null
           }
           undo={editor.undo}
           redo={editor.redo}
@@ -1007,6 +1034,16 @@ export default function MobileApp() {
             brushSize,
             filled,
             selection,
+            placement: pendingStamp
+              ? {
+                  rows: pendingStamp.bitmap.rows,
+                  point: pendingStamp.point,
+                  kind: pendingStamp.kind,
+                  onMove: (point) => setPendingStamp((s) => s && { ...s, point }),
+                  onCommit: placeStamp,
+                  onCancel: () => setPendingStamp(null),
+                }
+              : undefined,
             onSelectionChange: setSelection,
             onChange: (next, record) => {
               if (!playing)
@@ -1190,6 +1227,13 @@ export default function MobileApp() {
                   >
                     <StudioIcon name="redo" />
                   </button>
+                  <button
+                    aria-label="Slot Options"
+                    disabled={disabled}
+                    onClick={() => openDrawingPanel("message")}
+                  >
+                    <StudioIcon name="more" />
+                  </button>
                 </div>
               ) : route !== "send" ? (
                 <button disabled={disabled} onClick={done}>
@@ -1299,14 +1343,6 @@ export default function MobileApp() {
                         {slotKind(active)} · {MODE_LABELS[active.mode]}
                       </span>
                     </div>
-                    {route === "draw" && (
-                      <button
-                        disabled={disabled}
-                        onClick={() => setPanel("motion")}
-                      >
-                        Motion
-                      </button>
-                    )}
                     <button
                       aria-label="Slot Options"
                       disabled={disabled}
@@ -1461,6 +1497,15 @@ export default function MobileApp() {
                 </div>
               </>
             )}
+            {panel === "canvas-symbols" && (
+              <SymbolGrid
+                chars={symbols}
+                led={led}
+                onPick={(char) => {
+                  if (!rendering) void prepareStamp(char, stampFace, "Symbol");
+                }}
+              />
+            )}
             {panel === "stamp-symbols" && (
               <>
                 <div className="mobile-symbol-draft" aria-label="Stamp text draft">{stampText}</div>
@@ -1505,48 +1550,8 @@ export default function MobileApp() {
             {panel === "privacy" && <PrivacyNotice />}
             {panel === "frames" && (
               <>
-                <label className="mobile-speed-control">
-                  Playback Speed · {active.speed}/8
-                  <input
-                    aria-label="Playback Speed"
-                    type="range"
-                    min="1"
-                    max="8"
-                    value={active.speed}
-                    onChange={(e) =>
-                      update(active.id, (m) => ({
-                        ...m,
-                        speed: Number(e.target.value),
-                      }))
-                    }
-                  />
-                  <small className="mobile-range-caption">
-                    Slower <span>Faster</span>
-                  </small>
-                </label>
-                <p>
-                  Slot {project.messages.indexOf(active) + 1} · Frame{" "}
-                  {frameIndex + 1} of {active.frames.length}
-                </p>
+                <p>Frame {frameIndex + 1} of {active.frames.length}</p>
                 <div className="mobile-control-grid">
-                  <button
-                    disabled={active.frames.length >= ANIMATION_MAX_FRAMES}
-                    onClick={() => {
-                      duplicateFrame();
-                      setPanel(null);
-                    }}
-                  >
-                    Duplicate Frame
-                  </button>
-                  <button
-                    disabled={active.frames.length >= ANIMATION_MAX_FRAMES}
-                    onClick={() => {
-                      addBlankFrame();
-                      setPanel(null);
-                    }}
-                  >
-                    Add Blank Frame
-                  </button>
                   <button
                     className="mobile-danger"
                     disabled={active.frames.length <= 1}
@@ -1585,21 +1590,6 @@ export default function MobileApp() {
                     Move Frame Right
                   </button>
                 </div>
-                <label className="mobile-check">
-                  <input
-                    type="checkbox"
-                    checked={onion}
-                    onChange={(e) => setOnion(e.target.checked)}
-                  />
-                  Onion Skin
-                </label>
-                <p>
-                  {frameIndex === 0
-                    ? "Choose a later frame to see onion skin. "
-                    : ""}
-                  Show the previous frame as a drawing guide. These ghost pixels
-                  are not sent to the badge.
-                </p>
                 <p>
                   {active.frames.length} of {ANIMATION_MAX_FRAMES} frames used.
                   {active.frames.length === ANIMATION_MAX_FRAMES
@@ -1628,33 +1618,6 @@ export default function MobileApp() {
                   Select All
                 </button>
                 <div className="mobile-control-grid">
-                  <button
-                    disabled={!selection}
-                    onClick={() => {
-                      copySelection();
-                      setPanel(null);
-                    }}
-                  >
-                    Copy
-                  </button>
-                  <button
-                    disabled={!selection}
-                    onClick={() => {
-                      copySelection(true);
-                      setPanel(null);
-                    }}
-                  >
-                    Cut
-                  </button>
-                  <button
-                    disabled={!clipboard}
-                    onClick={() => {
-                      pasteSelection();
-                      setPanel(null);
-                    }}
-                  >
-                    Paste
-                  </button>
                   <button
                     disabled={!selection}
                     onClick={() => {
@@ -1725,7 +1688,14 @@ export default function MobileApp() {
                   <button onClick={() => updateFrame(flipV)}>
                     Flip Vertical
                   </button>
-                  <button onClick={clearFrame}>Clear Frame</button>
+                  <button
+                    onClick={() => {
+                      clearFrame();
+                      setPanel(null);
+                    }}
+                  >
+                    Clear Frame
+                  </button>
                   <button onClick={() => updateFrame((f) => shift(f, -1, 0))}>
                     Shift Left
                   </button>
@@ -1743,13 +1713,11 @@ export default function MobileApp() {
             )}
             {panel === "stamp" && (
               <>
-                <p>
-                  Text overlays this frame at the selection or top-left corner.
-                </p>
                 <label>
                   Text
                   <textarea
                     ref={stampSymbols.input}
+                    data-initial-focus
                     aria-label="Stamp Text"
                     rows={2}
                     value={stampText}
@@ -1795,9 +1763,9 @@ export default function MobileApp() {
                 <button
                   className="mobile-primary"
                   disabled={!stampText || rendering}
-                  onClick={() => void insertStamp()}
+                  onClick={() => void prepareStamp(stampText, stampFace, "Text")}
                 >
-                  Insert Text
+                  Position Text
                 </button>
               </>
             )}
@@ -1926,21 +1894,23 @@ export default function MobileApp() {
                     ))}
                   </select>
                 </label>
-                <label>
-                  Speed
-                  <input
-                    type="range"
-                    min="1"
-                    max="8"
-                    value={active.speed}
-                    onChange={(e) =>
-                      update(active.id, (m) => ({
-                        ...m,
-                        speed: Number(e.target.value),
-                      }))
-                    }
-                  />
-                </label>
+                {(route !== "draw" || active.mode !== "animation") && (
+                  <label>
+                    Speed
+                    <input
+                      type="range"
+                      min="1"
+                      max="8"
+                      value={active.speed}
+                      onChange={(e) =>
+                        update(active.id, (m) => ({
+                          ...m,
+                          speed: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                )}
                 <label className="mobile-check">
                   <input
                     type="checkbox"
@@ -1967,100 +1937,6 @@ export default function MobileApp() {
                   />
                   Border
                 </label>
-              </>
-            )}
-            {panel === "tool" && (
-              <>
-                <div className="mobile-brush-settings">
-                  <label>
-                    Brush Size
-                    <select
-                      value={brushSize}
-                      onChange={(e) => setBrushSize(Number(e.target.value))}
-                    >
-                      {[1, 2, 3].map((n) => (
-                        <option key={n} value={n}>
-                          {n} px
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="mobile-check">
-                    <input
-                      type="checkbox"
-                      checked={filled}
-                      onChange={(e) => setFilled(e.target.checked)}
-                    />
-                    Filled Shapes
-                  </label>
-                </div>
-                <div className="mobile-control-grid">
-                  {TOOL_CHOICES.map(([id, label]) => (
-                    <button
-                      key={id}
-                      aria-pressed={tool === id}
-                      onClick={() => {
-                        setTool(id);
-                        setPanel(null);
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <p>
-                  With Draw, tap to toggle a pixel. Start on a dark pixel to
-                  draw, or a lit pixel to erase.
-                </p>
-                {clipboard && (
-                  <button
-                    onClick={() => {
-                      pasteSelection();
-                      setTool("select");
-                      setPanel(null);
-                    }}
-                  >
-                    Paste Pixels
-                  </button>
-                )}
-                {tool === "select" && (
-                  <button onClick={() => setPanel("selection")}>
-                    Selection Options
-                  </button>
-                )}
-              </>
-            )}
-            {panel === "canvas" && (
-              <>
-                <div className="mobile-control-grid">
-                  <button onClick={() => go("preview")}>Preview Slot</button>
-                  <button onClick={sendScreen}>Send to Badge</button>
-                  <button onClick={() => setPanel("stamp")}>Stamp Text</button>
-                  <button onClick={() => setPanel("image")}>
-                    Import Image
-                  </button>
-                  <button
-                    onClick={() => {
-                      clearFrame();
-                      setPanel(null);
-                    }}
-                  >
-                    Clear Frame
-                  </button>
-                  <button onClick={() => setPanel("motion")}>Motion</button>
-                </div>
-                <button
-                  onClick={() => {
-                    setTool("select");
-                    setPanel("selection");
-                  }}
-                >
-                  Selection
-                </button>
-                <button onClick={() => setPanel("transform")}>Transform</button>
-                <button onClick={() => setPanel("message")}>
-                  Slot Options
-                </button>
               </>
             )}
             {panel === "message" && (
