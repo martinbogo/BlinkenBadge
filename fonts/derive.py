@@ -505,6 +505,15 @@ def main():
         path = HERE / f"{name}.face"
         body = hand_written(path)
         head, art, _ = read_face(body)
+        join_row = next((int(line.partition(":")[2]) for line in head.splitlines()
+                         if line.startswith("join-row:")), None)
+        if join_row is not None:
+            if not 0 <= join_row < ROWS:
+                raise SystemExit(f"{name}: invalid joining row")
+            # The authored overhang is a connector, not part of a letter's
+            # core width. Derive alphabets from the core, then restore it.
+            art = {ch: [row[:-2] + row[-1] for row in rows]
+                   for ch, rows in art.items()}
         M = Metrics(art)
         derived = derive(art, M)
 
@@ -527,7 +536,15 @@ def main():
             rows = render(derived[ch])
             if len(rows) != ROWS:
                 raise SystemExit(f"{name}: {ch!r} produced {len(rows)} rows")
-            blocks.append(f":{ch}\n" + "\n".join(rows) + "\n")
+            advance = ""
+            if join_row is not None:
+                width = len(rows[0]) - 1
+                core = [list(row[:-1]) for row in rows]
+                core[join_row][0] = core[join_row][-1] = "#"
+                rows = ["".join(row) + ("#" if y == join_row else ".") + "."
+                        for y, row in enumerate(core)]
+                advance = f" advance={width}"
+            blocks.append(f":{ch}{advance}\n" + "\n".join(rows) + "\n")
 
         path.write_text(
             body

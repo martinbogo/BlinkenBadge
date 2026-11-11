@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-28",
+  "application_commit": "c35cbfa40af7141611894430c3ef1c6d36cffad0",
+  "ios": {
+    "slots": 3,
+    "test_frame_counts": [
+      8,
+      8
+    ],
+    "unique_frames": [
+      8,
+      8
+    ],
+    "original_slots_unchanged": true,
+    "undo_restored_original_eight_frames": true,
+    "copy_only_changes_first_frame": [
+      1
+    ],
+    "test_speeds": [
+      1,
+      1
+    ],
+    "project_preserved_after_relaunch": true,
+    "osVersionNumber": "27.0.1"
+  },
+  "android": {
+    "model": "OnePlus CPH2583",
+    "os": "Android 16",
+    "slots": 3,
+    "test_frame_counts": [
+      8,
+      8
+    ],
+    "unique_frames": [
+      8,
+      8
+    ],
+    "onion_blank_frame_ink_counts": [
+      5,
+      0
+    ],
+    "original_slots_unchanged": true,
+    "reorder_changed_frames": [
+      7,
+      8
+    ],
+    "reorder_restored": true,
+    "frame_count_after_delete": 7,
+    "undo_restored_original_eight_frames": true,
+    "playback_touch_preserved_artwork": true,
+    "paused_edit_changed_frames": [
+      6
+    ],
+    "paused_edit_undo_restored": true,
+    "paused_edit_redo_restored": true,
+    "first_animation_unchanged": true,
+    "copy_only_changes_first_frame": [
+      1
+    ],
+    "test_speeds": [
+      1,
+      1
+    ],
+    "project_preserved_after_relaunch": true
+  },
+  "unverified": [
+    "physical badge transfer",
+    "physical pinch and pan gestures",
+    "rotation",
+    "eight-slot 64-frame device stress test",
+    "native file round-trip",
+    "older devices"
+  ]
+}

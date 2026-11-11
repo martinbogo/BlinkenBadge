@@ -94,6 +94,8 @@ export interface Message {
    * seven messages and the badge cycles seven.
    */
   enabled: boolean;
+  /** Editable text source; absent after direct pixel editing. */
+  text?: { value: string; face: string };
 }
 
 export type Brightness = 25 | 50 | 75 | 100;
@@ -109,7 +111,6 @@ export interface BadgeInfo {
   rssi: number | null;
   services: string[];
 }
-
 
 export interface TextBitmap {
   rows: boolean[][];
@@ -152,7 +153,10 @@ export const TOOL_KEYS: Record<Tool, string> = {
 };
 
 /** Tools whose outline/fill toggle applies. */
-export const SHAPE_TOOLS: ReadonlySet<Tool> = new Set<Tool>(["rect", "ellipse"]);
+export const SHAPE_TOOLS: ReadonlySet<Tool> = new Set<Tool>([
+  "rect",
+  "ellipse",
+]);
 
 /**
  * LED colors the badge ships in. The badge does not report which one it is,
