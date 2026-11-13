@@ -172,12 +172,11 @@ pub fn layout(chosen: &'static Face, text: &str) -> Layout {
             drawn.jitter[i % drawn.jitter.len()] as isize
         };
 
-        for r in 0..GLYPH_ROWS {
+        for (r, &bits) in glyph.rows.iter().enumerate() {
             let y = r as isize + dy;
             if y < 0 || y >= GLYPH_ROWS as isize {
                 continue;
             }
-            let bits = glyph.rows[r];
             // The whole ink field, not just the advance: a glyph is allowed to
             // overhang its neighbor, which is how an italic tail or a wide
             // accent works. Anything past the end of the grid is clipped.
