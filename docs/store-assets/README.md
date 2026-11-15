@@ -10,7 +10,7 @@ Prepared October 30, 2026 for the Android closed-test listing.
 | `phone-text.jpg` | 540 x 960 | Mobile text editor with Comic font |
 | `phone-fonts.jpg` | 540 x 960 | Mobile font picker |
 
-The listing icon is `BlinkenBadge/src-tauri/icons/icon.png`, 512 x 512. Screenshots are unaltered captures of the actual shared mobile interface at `?mobile`, using an isolated local preview draft. They are not physical-device captures. Their 9:16 dimensions meet Play's upload requirements, but do not meet the optional 1080-pixel promotional recommendation.
+The listing icon is `docs/brand/blinkenbadge-icon-512.png`, 512 x 512, the same artwork as `BlinkenBadge/src-tauri/icons/icon.png`; see `docs/brand/README.md`. Screenshots are unaltered captures of the actual shared mobile interface at `?mobile`, using an isolated local preview draft. They are not physical-device captures. Their 9:16 dimensions meet Play's upload requirements, but do not meet the optional 1080-pixel promotional recommendation.
 
 The feature graphic was declared as created or edited using AI in Play Console. Screenshots and the existing icon were not labeled as generated assets.
 
