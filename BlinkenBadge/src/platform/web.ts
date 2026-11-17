@@ -25,6 +25,7 @@ import type { BadgeInfo, TextBitmap } from "../types";
 import { withTimeout, operationLock, OperationTimeout } from "./async";
 import { MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES } from "../limits";
 import { encode } from "./wire";
+import { SUPPORT_URL } from "../support";
 import { fontMetrics as metrics, layout } from "./webfont";
 import type {
   DocRef,
@@ -363,6 +364,10 @@ export const fireMenu = (id: string) => {
 
 export const platform: Platform = {
   kind: "web",
+
+  openSupport: async () => {
+    window.open(SUPPORT_URL, "_blank", "noopener,noreferrer");
+  },
 
   fontMetrics: async (): Promise<FaceInfo[]> => metrics(),
   renderText: async (text, face): Promise<TextBitmap> => layout(text, face),

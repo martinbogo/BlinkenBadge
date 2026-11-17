@@ -42,6 +42,8 @@ const sub = <T>(name: string, cb: (payload: T) => void) => {
 export const platform: Platform = {
   kind: "tauri",
 
+  openSupport: () => invoke<void>("open_support"),
+
   fontMetrics: () => invoke<FaceInfo[]>("font_metrics"),
   renderText: (text, face) => invoke<TextBitmap>("render_text", { text, face }),
 

@@ -82,6 +82,9 @@ export type DocRef = string;
 export interface Platform {
   readonly kind: "tauri" | "web";
 
+  /** Open the Ko-fi page (SUPPORT_URL) in the system browser. */
+  openSupport(): Promise<void>;
+
   // --- fonts -------------------------------------------------------------
   fontMetrics(): Promise<FaceInfo[]>;
   renderText(text: string, face?: string): Promise<TextBitmap>;

@@ -15,6 +15,10 @@
 import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { mobileHost } from "./mobile/host";
+import { applyTheme, readTheme } from "./theme";
+
+// Before anything renders, so a light theme never flashes dark first.
+applyTheme(readTheme());
 
 const DesktopApp = lazy(() => import("./App"));
 const MobileApp = lazy(() => import("./mobile/MobileApp"));

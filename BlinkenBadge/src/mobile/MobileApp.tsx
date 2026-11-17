@@ -66,6 +66,9 @@ import StudioIcon from "./StudioIcon";
 import { useWideLayout } from "./useWideLayout";
 import SendWorkspace from "./SendWorkspace";
 import PrivacyNotice from "./PrivacyNotice";
+import { THEME_CHOICES, THEME_LABELS, useTheme } from "../theme";
+import { SUPPORT_URL } from "../support";
+import { nativeMobile } from "./host";
 import "../App.css";
 import "./mobile.css";
 
@@ -89,6 +92,7 @@ type Panel =
   | "canvas-symbols"
   | "image"
   | "color"
+  | "theme"
   | "confirm-mode"
   | "convert"
   | null;
@@ -114,6 +118,7 @@ const slotKind = (m: Message) =>
   m.text ? "Text" : m.mode === "animation" ? "Animation" : "Drawing";
 
 export default function MobileApp() {
+  const [theme, setTheme] = useTheme();
   const editor = useMobileProject();
   const { project, commit, replace, ready, saveState, error, setError, flush } =
     editor;
@@ -802,6 +807,7 @@ export default function MobileApp() {
     "canvas-symbols": "Badge Symbols",
     image: "Import Image",
     color: "LED Color",
+    theme: "Theme",
     "confirm-mode": "Change Mode",
     "confirm-new": "New Project",
     "confirm-import": "Import Project",
@@ -1544,7 +1550,19 @@ export default function MobileApp() {
                   Redo
                 </button>
                 <button onClick={() => setPanel("color")}>LED Color</button>
+                <button onClick={() => setPanel("theme")}>Theme</button>
                 <button onClick={() => setPanel("privacy")}>Privacy</button>
+                {/* The web only: the store builds may not link out for tips. */}
+                {!nativeMobile && (
+                  <a
+                    className="mobile-support"
+                    href={SUPPORT_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Support BlinkenBadge on Ko-fi
+                  </a>
+                )}
               </>
             )}
             {panel === "privacy" && <PrivacyNotice />}
@@ -1807,6 +1825,22 @@ export default function MobileApp() {
                     }}
                   >
                     {color[0].toUpperCase() + color.slice(1)}
+                  </button>
+                ))}
+              </>
+            )}
+            {panel === "theme" && (
+              <>
+                {THEME_CHOICES.map((c) => (
+                  <button
+                    key={c}
+                    aria-pressed={theme === c}
+                    onClick={() => {
+                      setTheme(c);
+                      setPanel(null);
+                    }}
+                  >
+                    {THEME_LABELS[c]}
                   </button>
                 ))}
               </>
