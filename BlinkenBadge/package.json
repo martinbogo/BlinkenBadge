@@ -31,7 +31,7 @@
     "@types/web-bluetooth": "^0.0.22",
     "@types/wicg-file-system-access": "^2023.10.7",
     "@vitejs/plugin-react": "^6.3.0",
-    "jsdom": "^31.0.0",
+    "jsdom": "^31.0.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
