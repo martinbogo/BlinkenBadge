@@ -35,10 +35,10 @@ Mobile Chromium omits WebHID; `navigator.hid` is `undefined` on Android.
    ```bash
    npm run build:web
    ```
-2. Deploy the contents of `BlinkenBadge/dist-web/` to an HTTPS server:
-   ```bash
-   scp -r BlinkenBadge/dist-web/* user@host:/var/www/html/badge/
-   ```
+2. Deploy the contents of `BlinkenBadge/dist-web/` to an HTTPS server. The
+   hosted copy at https://martinbogo.github.io/blinkenbadge/ is published by
+   the `publish-web` workflow when a `web-v*` tag is pushed; see the main
+   README.
 
 HTTPS is required. WebHID and Web Bluetooth are unavailable in non-secure HTTP contexts.
 
