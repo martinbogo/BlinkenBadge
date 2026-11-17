@@ -88,6 +88,7 @@ import {
 } from "./types";
 import { WebMenuBar } from "./components/WebMenuBar";
 import { SUPPORT_URL } from "./support";
+import { THEME_CHOICES, THEME_LABELS, useTheme } from "./theme";
 import "./App.css";
 
 const MAX_FRAMES = ANIMATION_MAX_FRAMES;
@@ -99,6 +100,7 @@ type Ask =
   | { kind: "quit" };
 
 export default function App() {
+  const [theme, setTheme] = useTheme();
   const blank = useMemo<Project>(
     () => ({ messages: [newMessage("scroll_left")], brightness: 100 }),
     [],
@@ -1137,6 +1139,19 @@ export default function App() {
           <button onClick={redo} disabled={!canRedo} title="Cmd/Ctrl+Shift+Z">
             Redo
           </button>
+          <span className="sep" />
+          <div className="theme-switch" role="group" aria-label="Theme">
+            {THEME_CHOICES.map((c) => (
+              <button
+                key={c}
+                className={theme === c ? "active" : undefined}
+                aria-pressed={theme === c}
+                onClick={() => setTheme(c)}
+              >
+                {THEME_LABELS[c]}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 

@@ -1,4 +1,7 @@
+/* Dark is the default; <html data-theme="light"> swaps the palette (theme.ts).
+   The LED surfaces use --led-* in both, because they depict unlit LEDs. */
 :root {
+  color-scheme: dark;
   --bg: #0b0d12;
   --panel: #12151d;
   --panel-2: #171b25;
@@ -9,6 +12,43 @@
   --accent-dim: #b83527;
   --blue: #3d7dff;
   --warn: #ffb020;
+  --ok: #35c37d;
+  --selected-bg: #1a2233;
+  --active-bg: #1d1418;
+  --accent-bg: #2a1a1d;
+  --hover-bg: #1d2230;
+  --hover-line: #38414f;
+  --danger-line: #7a3b3b;
+  --danger-text: #ff8b7a;
+  --backdrop: rgba(4, 6, 10, 0.65);
+  --shadow: rgba(0, 0, 0, 0.55);
+  --led-surface: #0d0f15;
+  --led-frame: #07090d;
+  --led-hover: #151a24;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f3f4f7;
+  --panel: #ffffff;
+  --panel-2: #eceef3;
+  --line: #d3d8e1;
+  --text: #1b1f27;
+  --muted: #5b6372;
+  --accent: #c8321f;
+  --accent-dim: #b83527;
+  --blue: #2563eb;
+  --warn: #9a5b00;
+  --ok: #1d8350;
+  --selected-bg: #e2eafb;
+  --active-bg: #fbeeec;
+  --accent-bg: #fbe4e0;
+  --hover-bg: #e7eaf0;
+  --hover-line: #b4bbc7;
+  --danger-line: #e0a69d;
+  --danger-text: #b3261e;
+  --backdrop: rgba(20, 24, 32, 0.35);
+  --shadow: rgba(0, 0, 0, 0.18);
 }
 
 * {
@@ -158,7 +198,7 @@ body {
 }
 
 .slot-list li.selected {
-  background: #1a2233;
+  background: var(--selected-bg);
   border-color: var(--blue);
 }
 
@@ -218,7 +258,7 @@ body {
 }
 
 .slot-list li:not(.off) .slot-toggle {
-  color: #35c37d;
+  color: var(--ok);
 }
 
 .slot-list li:hover {
@@ -227,7 +267,7 @@ body {
 
 .slot-list li.active {
   border-color: var(--accent-dim);
-  background: #1d1418;
+  background: var(--active-bg);
 }
 
 .slot-index {
@@ -281,7 +321,7 @@ body {
 }
 
 .canvas-wrap {
-  background: #0d0f15;
+  background: var(--led-surface);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 4px;
@@ -306,7 +346,7 @@ body {
   color: var(--fg);
   /* Over the lit pixels as well as the unlit ones, so the arrow stays legible
      wherever the bitmap happens to be dense. */
-  text-shadow: 0 0 3px #0d0f15, 0 0 3px #0d0f15;
+  text-shadow: 0 0 3px var(--led-surface), 0 0 3px var(--led-surface);
 }
 
 .canvas-more.left {
@@ -314,7 +354,7 @@ body {
   justify-content: flex-start;
   padding-left: 3px;
   border-radius: 5px 0 0 5px;
-  background: linear-gradient(to right, #0d0f15 30%, transparent);
+  background: linear-gradient(to right, var(--led-surface) 30%, transparent);
 }
 
 .canvas-more.right {
@@ -322,7 +362,7 @@ body {
   justify-content: flex-end;
   padding-right: 3px;
   border-radius: 0 5px 5px 0;
-  background: linear-gradient(to left, #0d0f15 30%, transparent);
+  background: linear-gradient(to left, var(--led-surface) 30%, transparent);
 }
 
 .pixel-canvas {
@@ -446,7 +486,7 @@ body {
 }
 
 .capacity-fill.sending {
-  background: #35c37d;
+  background: var(--ok);
 }
 
 .device-panel select {
@@ -467,8 +507,8 @@ button {
 }
 
 button:hover:not(:disabled) {
-  border-color: #38414f;
-  background: #1d2230;
+  border-color: var(--hover-line);
+  background: var(--hover-bg);
 }
 
 button:disabled {
@@ -644,7 +684,7 @@ p {
 }
 
 .tool-btn.active {
-  background: #2a1a1d;
+  background: var(--accent-bg);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -681,11 +721,29 @@ p {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  background: #07090d;
+  background: var(--led-frame);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 10px 10px;
   margin-bottom: 2px;
+}
+
+/* --- theme switch --- */
+
+.theme-switch {
+  display: inline-flex;
+}
+.theme-switch button {
+  border-radius: 0;
+}
+.theme-switch button:first-child {
+  border-radius: 5px 0 0 5px;
+}
+.theme-switch button:last-child {
+  border-radius: 0 5px 5px 0;
+}
+.theme-switch button + button {
+  margin-left: -1px;
 }
 
 /* --- footer --- */
@@ -801,9 +859,9 @@ p {
    USB path, so it must not invite a click. */
 .transport-chip {
   padding: 4px 9px;
-  border: 1px solid var(--ok, #3ba55d);
+  border: 1px solid var(--ok);
   border-radius: 4px;
-  color: var(--ok, #3ba55d);
+  color: var(--ok);
   font-size: 11px;
   letter-spacing: 0.06em;
   cursor: default;
@@ -820,7 +878,7 @@ button.record {
 }
 
 button.record:hover:not(:disabled) {
-  background: #2a1a1d;
+  background: var(--accent-bg);
 }
 
 button.record.armed {
@@ -865,7 +923,7 @@ button.record.armed .record-dot {
 
 .send-progress-fill {
   height: 100%;
-  background: #35c37d;
+  background: var(--ok);
   transition: width 120ms linear;
 }
 
@@ -1052,7 +1110,7 @@ button.record.armed .record-dot {
 }
 
 button.active {
-  background: #2a1a1d;
+  background: var(--accent-bg);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -1097,7 +1155,7 @@ button.active {
   z-index: 100;
   display: grid;
   place-items: center;
-  background: rgba(4, 6, 10, 0.65);
+  background: var(--backdrop);
   backdrop-filter: blur(2px);
 }
 
@@ -1107,7 +1165,7 @@ button.active {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 18px 50px var(--shadow);
 }
 
 .modal-title {
@@ -1149,8 +1207,8 @@ button.active {
 }
 
 .modal-actions button.danger {
-  border-color: #7a3b3b;
-  color: #ff8b7a;
+  border-color: var(--danger-line);
+  color: var(--danger-text);
 }
 
 /* The slot the preview is currently playing, which in sequence mode is usually
@@ -1176,7 +1234,7 @@ button.active {
   padding: 6px;
   max-height: 132px;
   overflow-y: auto;
-  background: #0d0f15;
+  background: var(--led-surface);
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -1197,7 +1255,7 @@ button.active {
 .emoji-swatch:hover,
 .emoji-swatch:focus-visible {
   border-color: var(--blue);
-  background: #151a24;
+  background: var(--led-hover);
 }
 
 .emoji-swatch canvas {
@@ -1221,7 +1279,7 @@ button.active {
   min-width: 13rem; padding: 0.25rem;
   background: var(--panel, #1c1c1c); color: inherit;
   border: 1px solid rgba(127, 127, 127, 0.35); border-radius: 7px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 24px var(--shadow);
 }
 .web-menu-items button {
   display: flex; justify-content: space-between; align-items: center; gap: 1.5rem;
