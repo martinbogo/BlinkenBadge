@@ -82,6 +82,9 @@ export type DocRef = string;
 export interface Platform {
   readonly kind: "tauri" | "web";
 
+  /** Open a page in the system browser. The desktop allows only SUPPORT_URL. */
+  openExternal(url: string): Promise<void>;
+
   // --- fonts -------------------------------------------------------------
   fontMetrics(): Promise<FaceInfo[]>;
   renderText(text: string, face?: string): Promise<TextBitmap>;

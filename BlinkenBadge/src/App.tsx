@@ -87,6 +87,7 @@ import {
   type Tool,
 } from "./types";
 import { WebMenuBar } from "./components/WebMenuBar";
+import { SUPPORT_URL } from "./support";
 import "./App.css";
 
 const MAX_FRAMES = ANIMATION_MAX_FRAMES;
@@ -1563,6 +1564,21 @@ export default function App() {
         brightness={project.brightness}
         onBrightness={(b) => commit({ ...project, brightness: b })}
       />
+
+      <footer className="app-footer">
+        <a
+          className="support-link"
+          href={SUPPORT_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => {
+            e.preventDefault();
+            void platform.openExternal(SUPPORT_URL);
+          }}
+        >
+          Support BlinkenBadge on Ko-fi
+        </a>
+      </footer>
 
       {ask?.kind === "unsaved" && (
         <Modal

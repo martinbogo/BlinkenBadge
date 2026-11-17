@@ -364,6 +364,10 @@ export const fireMenu = (id: string) => {
 export const platform: Platform = {
   kind: "web",
 
+  openExternal: async (url) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  },
+
   fontMetrics: async (): Promise<FaceInfo[]> => metrics(),
   renderText: async (text, face): Promise<TextBitmap> => layout(text, face),
 

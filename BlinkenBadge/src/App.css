@@ -688,6 +688,27 @@ p {
   margin-bottom: 2px;
 }
 
+/* --- footer --- */
+
+.app-footer {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 12px 6px;
+  background: var(--panel);
+}
+
+.support-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.support-link:hover,
+.support-link:focus-visible {
+  text-decoration: underline;
+}
+
 /* --- transport bar --- */
 
 .transport {

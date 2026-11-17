@@ -21,6 +21,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { BadgeInfo, TextBitmap } from "../types";
 import type {
   DocRef,
@@ -41,6 +42,8 @@ const sub = <T>(name: string, cb: (payload: T) => void) => {
 
 export const platform: Platform = {
   kind: "tauri",
+
+  openExternal: (url) => openUrl(url),
 
   fontMetrics: () => invoke<FaceInfo[]>("font_metrics"),
   renderText: (text, face) => invoke<TextBitmap>("render_text", { text, face }),
