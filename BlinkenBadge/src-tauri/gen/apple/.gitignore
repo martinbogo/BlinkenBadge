@@ -1,0 +1,7 @@
+xcuserdata/
+build/
+Externals/
+
+# Tauri copies the built frontend here.
+assets/
+.tauri/

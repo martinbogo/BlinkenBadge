@@ -104,7 +104,7 @@ export interface Platform {
   sendBle(
     messages: MessageSpec[],
     brightness: number,
-    deviceId: string
+    deviceId: string,
   ): Promise<number>;
 
   // --- documents ---------------------------------------------------------
@@ -113,12 +113,19 @@ export interface Platform {
   readText(path: DocRef, kind: FileKind): Promise<string>;
   writeText(path: DocRef, contents: string, kind: FileKind): Promise<void>;
   pickImage(): Promise<string | null>;
+  /** Mobile documents are imported into the private draft, then exported explicitly. */
+  importDocument?(kind: FileKind): Promise<string | null>;
+  exportDocument?(json: string, kind: FileKind): Promise<boolean>;
   takePendingFiles(): Promise<DocRef[]>;
 
   // --- session -----------------------------------------------------------
   recentClear(): Promise<void>;
   recoveryRead(): Promise<Recovery | null>;
-  recoveryWrite(json: string, path: DocRef | null, savedAt: string): Promise<void>;
+  recoveryWrite(
+    json: string,
+    path: DocRef | null,
+    savedAt: string,
+  ): Promise<void>;
   recoveryClear(): Promise<void>;
 
   // --- shell -------------------------------------------------------------

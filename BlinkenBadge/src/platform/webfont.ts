@@ -105,7 +105,7 @@ export function layout(text: string, faceId?: string): TextBitmap {
   const chosen = faceById(faceId);
   const width = measure(chosen, text);
   const rows: boolean[][] = Array.from({ length: BADGE_HEIGHT }, () =>
-    new Array<boolean>(width).fill(false)
+    new Array<boolean>(width).fill(false),
   );
   const missing: string[] = [];
   let pen = 0;
@@ -130,7 +130,17 @@ export function layout(text: string, faceId?: string): TextBitmap {
     // stays bouncy even where it borrows a pictograph from another. Keyed on
     // position in the string rather than on the character, or every 'l' in
     // "hello" would bounce to the same height and it would read as a fault.
-    const dy = drawn.jitter.length ? drawn.jitter[at % drawn.jitter.length] : 0;
+    const requestedDy = drawn.jitter.length
+      ? drawn.jitter[at % drawn.jitter.length]
+      : 0;
+    const ink = glyph.slice(1);
+    const top = ink.findIndex((r) => r !== 0);
+    let bottom = ink.length - 1;
+    while (bottom > 0 && !ink[bottom]) bottom--;
+    const dy = Math.max(
+      -Math.max(0, top),
+      Math.min(BADGE_HEIGHT - 1 - bottom, requestedDy),
+    );
     for (let r = 0; r < BADGE_HEIGHT; r++) {
       const y = r + dy;
       if (y < 0 || y >= BADGE_HEIGHT) continue;
@@ -160,6 +170,8 @@ export function fontMetrics(): FaceInfo[] {
     name: f.name,
     notice: f.notice,
     pickable: f.pickable,
-    advances: Object.entries(f.glyphs).map(([c, g]) => [c, g[0]] as [string, number]),
+    advances: Object.entries(f.glyphs).map(
+      ([c, g]) => [c, g[0]] as [string, number],
+    ),
   }));
 }

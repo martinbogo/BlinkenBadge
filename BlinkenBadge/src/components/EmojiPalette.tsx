@@ -23,10 +23,9 @@ interface Props {
   chars: string[];
   led: LedColor;
   onPick: (c: string) => void;
+  nameForChar?: (c: string) => string;
+  cell?: number;
 }
-
-/** Pixels per LED. Big enough to read a 11x11 sprite, small enough to fit 42. */
-const CELL = 2;
 
 /**
  * The pictographs the badge can actually draw, shown as the badge will draw
@@ -38,7 +37,7 @@ const CELL = 2;
  * A color glyph from the operating system answers neither, and would promise
  * detail the hardware cannot show.
  */
-export default function EmojiPalette({ chars, led, onPick }: Props) {
+export default function EmojiPalette({ chars, led, onPick, nameForChar, cell = 2 }: Props) {
   const [bitmap, setBitmap] = useState<TextBitmap | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,9 +68,10 @@ export default function EmojiPalette({ chars, led, onPick }: Props) {
   });
 
   return (
-    <div className="emoji-palette" role="group" aria-label="Emoji">
+    <div className="emoji-palette" role="group" aria-label={nameForChar ? "Badge symbols" : "Emoji"}>
       {slices.map(({ c, at, w }) => (
-        <Sprite key={c} bitmap={bitmap} at={at} w={w} led={led} onPick={() => onPick(c)} char={c} />
+        <Sprite key={c} bitmap={bitmap} at={at} w={w} led={led} onPick={() => onPick(c)}
+          label={nameForChar?.(c) ?? c} cell={cell} />
       ))}
     </div>
   );
@@ -82,14 +82,16 @@ function Sprite({
   at,
   w,
   led,
-  char,
+  label,
+  cell,
   onPick,
 }: {
   bitmap: TextBitmap;
   at: number;
   w: number;
   led: LedColor;
-  char: string;
+  label: string;
+  cell: number;
   onPick: () => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -99,32 +101,30 @@ function Sprite({
     const ctx = cv?.getContext("2d");
     if (!cv || !ctx) return;
     const dpr = window.devicePixelRatio || 1;
-    cv.width = w * CELL * dpr;
-    cv.height = BADGE_HEIGHT * CELL * dpr;
-    cv.style.width = `${w * CELL}px`;
-    cv.style.height = `${BADGE_HEIGHT * CELL}px`;
+    cv.width = w * cell * dpr;
+    cv.height = BADGE_HEIGHT * cell * dpr;
+    cv.style.width = `${w * cell}px`;
+    cv.style.height = `${BADGE_HEIGHT * cell}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#10131a";
-    ctx.fillRect(0, 0, w * CELL, BADGE_HEIGHT * CELL);
+    ctx.fillRect(0, 0, w * cell, BADGE_HEIGHT * cell);
     ctx.fillStyle = ledPalette(led).on;
     for (let y = 0; y < BADGE_HEIGHT; y++) {
       for (let x = 0; x < w; x++) {
-        if (bitmap.rows[y]?.[at + x]) ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+        if (bitmap.rows[y]?.[at + x]) ctx.fillRect(x * cell, y * cell, cell, cell);
       }
     }
-  }, [bitmap, at, w, led]);
+  }, [bitmap, at, w, led, cell]);
 
   return (
     <button
       type="button"
       className="emoji-swatch"
       onClick={onPick}
-      // The system glyph is no use as a label at this size, but it is exactly
-      // what a screen reader and a tooltip want.
-      title={char}
-      aria-label={char}
+      title={label}
+      aria-label={label}
     >
-      <canvas ref={ref} />
+      <canvas ref={ref} aria-hidden="true" />
     </button>
   );
 }
