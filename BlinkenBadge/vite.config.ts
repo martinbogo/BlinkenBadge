@@ -11,6 +11,10 @@ const target = process.env.BADGE_TARGET === "web" ? "web" : "tauri";
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
+  define: {
+    __BADGE_HOST__: JSON.stringify(process.env.TAURI_ENV_PLATFORM ?? "desktop"),
+  },
+  build: { target: ["safari15", "chrome111"] },
   // Relative, so the browser build works from a subdirectory. Vite's default
   // emits root-absolute asset paths, which 404 for anyone not hosting at the
   // domain root. The desktop build is always served from the root of its own

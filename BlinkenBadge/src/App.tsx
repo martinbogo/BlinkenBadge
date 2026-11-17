@@ -225,7 +225,14 @@ export default function App() {
         {
           ...project,
           messages: project.messages.map((m) =>
-            m.id === active.id ? fn(m) : m,
+            m.id === active.id
+              ? (() => {
+                  const next = fn(m);
+                  return next.frames !== m.frames
+                    ? { ...next, text: undefined }
+                    : next;
+                })()
+              : m,
           ),
         },
         history,

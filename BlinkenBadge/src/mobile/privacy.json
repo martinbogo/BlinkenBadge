@@ -1,0 +1,25 @@
+{
+  "updated": "October 28, 2026",
+  "sections": [
+    {
+      "title": "Local Data",
+      "text": "BlinkenBadge stores your working project and display preferences on your device. It does not require an account or send projects, imported images, or badge identifiers to developer-operated servers."
+    },
+    {
+      "title": "Bluetooth",
+      "text": "Bluetooth access finds nearby compatible badges and sends artwork to the badge you select. On Android 7 through 11, the operating system also requires location permission for Bluetooth discovery. BlinkenBadge does not use this permission to track your location."
+    },
+    {
+      "title": "Files",
+      "text": "BlinkenBadge reads the projects and images you select with the system picker. Export writes a copy to the destination you choose. Cloud storage providers handle exported files under their own privacy policies."
+    },
+    {
+      "title": "Tracking",
+      "text": "BlinkenBadge includes no advertising, analytics, or tracking services. Apple and Google may provide platform diagnostics and beta-testing feedback under their own policies and your device settings."
+    },
+    {
+      "title": "Retention",
+      "text": "Your working project remains on the device until you replace it or remove the app's local data. Exported copies remain in the destination you selected until you delete them there."
+    }
+  ]
+}

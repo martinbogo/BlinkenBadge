@@ -1,0 +1,2102 @@
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { platform } from "../platform";
+import type { Progress } from "../platform";
+import {
+  blankFrame,
+  byteColumns,
+  cloneFrame,
+  flipH,
+  flipV,
+  invert,
+  shift,
+  stamp,
+  enabledMessages,
+  newMessage,
+  previewPeriod,
+  resizeFrame,
+  stepDelay,
+} from "../badge";
+import {
+  faceList,
+  fitText,
+  loadFontMetrics,
+  measureText,
+  pictographs,
+} from "../font";
+import { clearRect, extractRect, pasteBlock, type Point, type Rect } from "../draw";
+import { importImage } from "../importImage";
+import { MAX_BITMAP_WIDTH } from "../limits";
+import { ledPalette } from "../led";
+import MobilePreview, { MiniBadge } from "./MobilePreview";
+import FontChoice from "./FontChoice";
+import { SymbolGrid, SymbolPopover, useSymbolText } from "./SymbolPicker";
+import {
+  parseMessage,
+  parseProject,
+  serializeMessage,
+  serializeProject,
+} from "../doc";
+import {
+  ANIMATION_MAX_FRAMES,
+  BADGE_WIDTH,
+  LED_COLORS,
+  LED_ORDER,
+  MAX_BYTE_COLUMNS,
+  type Frame,
+  type TextBitmap,
+  type LedColor,
+  MAX_MESSAGES,
+  MODES,
+  MODE_LABELS,
+  type BadgeInfo,
+  type Message,
+  type Mode,
+} from "../types";
+import { emptyMobileProject, useMobileProject } from "./useMobileProject";
+import type { MobileTool } from "./MobileCanvas";
+import Sheet from "./Sheet";
+import DrawingWorkspace from "./DrawingWorkspace";
+import StudioIcon from "./StudioIcon";
+import { useWideLayout } from "./useWideLayout";
+import SendWorkspace from "./SendWorkspace";
+import PrivacyNotice from "./PrivacyNotice";
+import "../App.css";
+import "./mobile.css";
+
+type Route = "project" | "text" | "draw" | "send" | "preview";
+type Panel =
+  | "project"
+  | "privacy"
+  | "add"
+  | "font"
+  | "motion"
+  | "message"
+  | "confirm-new"
+  | "confirm-import"
+  | "confirm-delete"
+  | "frames"
+  | "selection"
+  | "transform"
+  | "stamp"
+  | "symbols"
+  | "stamp-symbols"
+  | "canvas-symbols"
+  | "image"
+  | "color"
+  | "confirm-mode"
+  | "convert"
+  | null;
+
+const TOOL_CHOICES = [
+  ["pencil", "Draw"],
+  ["eraser", "Erase"],
+  ["fill", "Fill"],
+  ["line", "Line"],
+  ["rect", "Box"],
+  ["ellipse", "Oval"],
+  ["select", "Select"],
+  ["pan", "Move"],
+] as const;
+
+interface PendingStamp {
+  bitmap: TextBitmap;
+  point: Point;
+  kind: "Text" | "Symbol";
+}
+
+const slotKind = (m: Message) =>
+  m.text ? "Text" : m.mode === "animation" ? "Animation" : "Drawing";
+
+export default function MobileApp() {
+  const editor = useMobileProject();
+  const { project, commit, replace, ready, saveState, error, setError, flush } =
+    editor;
+  const wide = useWideLayout();
+  const [route, setRoute] = useState<Route>("project");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [panel, setPanel] = useState<Panel>(null);
+  const [draft, setDraft] = useState("");
+  const [face, setFace] = useState("serif");
+  const [fonts, setFonts] = useState<ReturnType<typeof faceList>>([]);
+  const [rendering, setRendering] = useState(false);
+  const [onion, setOnion] = useState(true);
+  const [brushSize, setBrushSize] = useState(1);
+  const [filled, setFilled] = useState(false);
+  const [selection, setSelection] = useState<Rect | null>(null);
+  const [clipboard, setClipboard] = useState<Frame | null>(null);
+  const [stampText, setStampText] = useState("");
+  const [pendingStamp, setPendingStamp] = useState<PendingStamp | null>(null);
+  const [stampFace, setStampFace] = useState("serif");
+  const [symbols, setSymbols] = useState<string[]>([]);
+  const [roomForSymbols, setRoomForSymbols] = useState(false);
+  const [threshold, setThreshold] = useState(127);
+  const [pendingMode, setPendingMode] = useState<Mode | null>(null);
+  const [led, setLed] = useState<LedColor>(() => {
+    try {
+      const value = localStorage.getItem("badge-led") as LedColor;
+      return LED_ORDER.includes(value) ? value : "red";
+    } catch {
+      return "red";
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("badge-led", led);
+    } catch {
+      /* Optional preference. */
+    }
+  }, [led]);
+  const [tool, setTool] = useState<MobileTool>("pencil");
+  const [frameIndex, setFrameIndex] = useState(0);
+  const [drawingFocus, setDrawingFocus] = useState(false);
+  const drawingFocusRef = useRef(false);
+  drawingFocusRef.current = drawingFocus;
+  const panelRef = useRef<Panel>(null);
+  panelRef.current = panel;
+  const [playing, setPlaying] = useState(false);
+  const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState<"scan" | "send" | "file" | null>(null);
+  const [badges, setBadges] = useState<BadgeInfo[]>([]);
+  const [badgeId, setBadgeId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [previewStart, setPreviewStart] = useState<{
+    scope: "slot" | "sequence";
+    step: number;
+  }>({ scope: "sequence", step: 0 });
+  const [status, setStatus] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const symbolAnchor = useRef<HTMLButtonElement>(null);
+  const renderSequence = useRef(0);
+  const forceTextRender = useRef(false);
+  const [fontChoiceVersion, refreshFontChoice] = useState(0);
+  const operation = useRef(false);
+  const active =
+    project.messages.find((m) => m.id === selectedId) ?? project.messages[0];
+  const frame = active.frames[Math.min(frameIndex, active.frames.length - 1)];
+  const navigationDepth = useRef(0);
+  // The slot whose text the draft holds, so the studio layout reloads the
+  // draft when the selection moves without go(), such as after a delete.
+  const draftFor = useRef<string | null>(null);
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  const busyRef = useRef(false);
+  busyRef.current = busy !== null || rendering;
+
+  useEffect(() => {
+    window.document.documentElement.classList.add("mobile-layout");
+    void loadFontMetrics()
+      .then(() => {
+        setFonts(faceList());
+        setSymbols(pictographs());
+      })
+      .catch((e) => setError(String(e)));
+    const resize = () => {
+      const height = window.visualViewport?.height ?? window.innerHeight;
+      root.current?.style.setProperty(
+        "--mobile-height",
+        `${height}px`,
+      );
+      // The software keyboard changes height without changing the editor's width.
+      setRoomForSymbols((root.current?.clientWidth || window.innerWidth) >= 1080);
+    };
+    resize();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null;
+    if (root.current) observer?.observe(root.current);
+    window.visualViewport?.addEventListener("resize", resize);
+    window.addEventListener("resize", resize);
+    const back = () => {
+      if (
+        busyRef.current ||
+        panelRef.current ||
+        (routeRef.current === "draw" && drawingFocusRef.current)
+      ) {
+        history.pushState(
+          {
+            mobileRoute: routeRef.current,
+            mobileDepth: navigationDepth.current,
+          },
+          "",
+        );
+        if (!busyRef.current) {
+          if (panelRef.current)
+            setPanel(panelRef.current === "stamp-symbols" ? "stamp" : null);
+          else setDrawingFocus(false);
+        }
+        return;
+      }
+      const next = history.state?.mobileRoute;
+      navigationDepth.current = Math.max(0, history.state?.mobileDepth ?? 0);
+      setPanel(null);
+      setPlaying(false);
+      setRoute(
+        ["project", "text", "draw", "send", "preview"].includes(next)
+          ? next
+          : "project",
+      );
+    };
+    navigationDepth.current = 0;
+    history.replaceState({ mobileRoute: "project", mobileDepth: 0 }, "");
+    window.addEventListener("popstate", back);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", resize);
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("popstate", back);
+      observer?.disconnect();
+    };
+  }, [setError]);
+  const go = (
+    next: Route,
+    message = active,
+    previewScope?: "slot" | "sequence",
+  ) => {
+    forceTextRender.current = false;
+    setPendingStamp(null);
+    setDrawingFocus(false);
+    if (next === "project" && navigationDepth.current > 0) {
+      setPanel(null);
+      setPlaying(false);
+      void flush();
+      history.go(-navigationDepth.current);
+      return;
+    }
+    if (next === "preview")
+      setPreviewStart({
+        scope: previewScope ?? (route === "project" ? "sequence" : "slot"),
+        step: route === "draw" && active.mode === "animation" ? frameIndex : 0,
+      });
+    setPanel(null);
+    setPlaying(false);
+    setStep(0);
+    setStatus(null);
+    if (message) {
+      setSelectedId(message.id);
+      setDraft(message.text?.value ?? "");
+      setFace(message.text?.face ?? "serif");
+      draftFor.current = message.id;
+    }
+    setFrameIndex(0);
+    setSelection(null);
+    if (
+      wide &&
+      (next === "text" || next === "draw") &&
+      (route === "project" || route === "text" || route === "draw")
+    ) {
+      // Beside the slot list, switching slots is selection, not navigation.
+      history.replaceState(
+        { mobileRoute: next, mobileDepth: navigationDepth.current },
+        "",
+      );
+    } else if (next !== route) {
+      navigationDepth.current++;
+      history.pushState(
+        { mobileRoute: next, mobileDepth: navigationDepth.current },
+        "",
+      );
+    }
+    setRoute(next);
+    void flush();
+  };
+  const update = useCallback(
+    (id: string, fn: (m: Message) => Message, record = true) => {
+      commit(
+        (p) => ({
+          ...p,
+          messages: p.messages.map((m) => (m.id === id ? fn(m) : m)),
+        }),
+        record,
+      );
+      setSent(false);
+    },
+    [commit],
+  );
+
+  // Beside the slot list there is no slot overview to return to: the editor
+  // always shows the selected slot, in the editor its content needs.
+  const activeIsText = !!active.text;
+  useLayoutEffect(() => {
+    if (!wide || !ready) return;
+    if (route !== "project" && route !== "text" && route !== "draw") return;
+    const want: Route = activeIsText ? "text" : "draw";
+    if (route === want && draftFor.current === active.id) return;
+    setDraft(active.text?.value ?? "");
+    setFace(active.text?.face ?? "serif");
+    draftFor.current = active.id;
+    if (route !== want) {
+      setPlaying(false);
+      setFrameIndex(0);
+      setSelection(null);
+      history.replaceState(
+        { mobileRoute: want, mobileDepth: navigationDepth.current },
+        "",
+      );
+      setRoute(want);
+    }
+    // active.text is read for its value only when the slot or its kind changes.
+  }, [wide, ready, route, active.id, activeIsText]);
+
+  // Rendering only replaces editable text. Imported pixel artwork is never inferred as text.
+  useEffect(() => {
+    if (route !== "text" || !ready || !active.text) {
+      setRendering(false);
+      return;
+    }
+    if (
+      draft === active.text.value &&
+      face === active.text.face &&
+      !forceTextRender.current
+    ) {
+      setRendering(false);
+      return;
+    }
+    const sequence = ++renderSequence.current;
+    const id = active.id;
+    setRendering(true);
+    const timer = setTimeout(() => {
+      void platform
+        .renderText(draft, face)
+        .then((bitmap) => {
+          if (sequence !== renderSequence.current) return;
+          setRendering(false);
+          forceTextRender.current = false;
+          update(id, (m) => ({
+            ...m,
+            name: draft.trim().slice(0, 20) || "Untitled",
+            width: bitmap.width || BADGE_WIDTH,
+            frames: [resizeFrame(bitmap.rows, bitmap.width || BADGE_WIDTH)],
+            text: { value: draft, face },
+          }));
+          setError(
+            bitmap.missing.length
+              ? `Some characters have no glyph: ${bitmap.missing.join(" ")}.`
+              : null,
+          );
+        })
+        .catch((e) => {
+          if (sequence === renderSequence.current) {
+            setError(String(e));
+            setRendering(false);
+          }
+        })
+        .finally(() => {
+          if (sequence === renderSequence.current) setRendering(false);
+        });
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      renderSequence.current++;
+    };
+  }, [
+    draft,
+    face,
+    fontChoiceVersion,
+    active.id,
+    active.text?.value,
+    active.text?.face,
+    ready,
+    route,
+    update,
+    setError,
+  ]);
+  useEffect(() => {
+    if (!playing) return;
+    const timer = setInterval(
+      () => setStep((s) => (s + 1) % Math.max(1, previewPeriod(active))),
+      stepDelay(active.speed),
+    );
+    return () => clearInterval(timer);
+  }, [playing, active]);
+  useEffect(() => {
+    setFrameIndex((i) => Math.min(i, active.frames.length - 1));
+  }, [active.frames.length]);
+  useEffect(() => platform.onSendProgress(setProgress), []);
+  useEffect(() => setSelection(null), [active.id, frameIndex]);
+  useEffect(() => setPendingStamp(null), [active.id, active.mode, frameIndex, route]);
+
+  const shownFrame =
+    playing && active.mode === "animation"
+      ? step % active.frames.length
+      : Math.min(frameIndex, active.frames.length - 1);
+  const selectFrame = (index: number) => {
+    setPendingStamp(null);
+    setPlaying(false);
+    setFrameIndex(index);
+    setStep(index);
+    setSelection(null);
+  };
+  const pauseFrame = () => {
+    const index = shownFrame;
+    setPlaying(false);
+    setFrameIndex(index);
+    return index;
+  };
+  const toggleDrawingPlayback = () => {
+    setPendingStamp(null);
+    if (playing) pauseFrame();
+    else {
+      setStep(active.mode === "animation" ? frameIndex : 0);
+      setPlaying(true);
+    }
+  };
+  const duplicateFrame = () => {
+    if (active.frames.length >= ANIMATION_MAX_FRAMES) return;
+    const index = pauseFrame();
+    update(active.id, (m) => {
+      const frames = [...m.frames];
+      frames.splice(index + 1, 0, cloneFrame(m.frames[index]));
+      return { ...m, frames };
+    });
+    selectFrame(index + 1);
+  };
+  const addBlankFrame = () => {
+    if (active.frames.length >= ANIMATION_MAX_FRAMES) return;
+    const index = active.frames.length;
+    update(active.id, (m) => ({
+      ...m,
+      frames: [...m.frames, blankFrame(m.width)],
+    }));
+    selectFrame(index);
+  };
+  const add = (kind: "text" | "drawing" | "animation") => {
+    const text = kind === "text";
+    if (project.messages.length >= MAX_MESSAGES) return;
+    const message: Message = {
+      ...newMessage(
+        text ? "scroll_left" : kind === "animation" ? "animation" : "fixed",
+      ),
+      ...(text ? { text: { value: "", face: "serif" } } : {}),
+    };
+    commit((p) => ({ ...p, messages: [...p.messages, message] }));
+    go(text ? "text" : "draw", message);
+  };
+  const applyMode = (value: Mode) => {
+    update(active.id, (m) => ({
+      ...m,
+      mode: value,
+      text: value === "animation" ? undefined : m.text,
+      width: value === "animation" ? BADGE_WIDTH : m.width,
+      frames:
+        value === "animation"
+          ? m.frames.map((f) => resizeFrame(f, BADGE_WIDTH))
+          : [m.frames[0]],
+    }));
+    setFrameIndex(0);
+    setStep(0);
+    if (value === "animation" && route === "text") setRoute("draw");
+  };
+  const mode = (value: Mode) => {
+    if (value === active.mode) return;
+    if (
+      (active.mode === "animation" && active.frames.length > 1) ||
+      (value === "animation" && active.width > BADGE_WIDTH)
+    ) {
+      setPendingMode(value);
+      setPanel("confirm-mode");
+    } else applyMode(value);
+  };
+  const updateFrame = (fn: (f: Frame) => Frame) =>
+    update(active.id, (m) => ({
+      ...m,
+      text: undefined,
+      frames: m.frames.map((f, i) => (i === frameIndex ? fn(f) : f)),
+    }));
+  const clearFrame = () => updateFrame(() => blankFrame(active.width));
+  const moveFrame = (to: number) => {
+    if (to < 0 || to >= active.frames.length) return;
+    update(active.id, (m) => {
+      const frames = [...m.frames];
+      const [moved] = frames.splice(frameIndex, 1);
+      frames.splice(to, 0, moved);
+      return { ...m, frames };
+    });
+    setFrameIndex(to);
+    setSelection(null);
+  };
+  const moveSlot = (delta: number) => {
+    commit((p) => {
+      const messages = [...p.messages];
+      const from = messages.findIndex((m) => m.id === active.id);
+      const to = from + delta;
+      if (to < 0 || to >= messages.length) return p;
+      const [moved] = messages.splice(from, 1);
+      messages.splice(to, 0, moved);
+      return { ...p, messages };
+    });
+    setSent(false);
+  };
+  const copySelection = (cut = false) => {
+    if (!selection) return;
+    setClipboard(extractRect(frame, selection));
+    if (cut) updateFrame((f) => clearRect(f, selection));
+  };
+  const pasteSelection = () => {
+    if (!clipboard) return;
+    const x = selection?.x0 ?? 0,
+      y = selection?.y0 ?? 0;
+    updateFrame((f) => pasteBlock(f, clipboard, x, y, false));
+    setSelection({
+      x0: x,
+      y0: y,
+      x1: Math.min(active.width - 1, x + clipboard[0].length - 1),
+      y1: Math.min(10, y + clipboard.length - 1),
+    });
+  };
+  const sendScreen = () => {
+    setSent(false);
+    go("send");
+  };
+  const nudge = (dx: number, dy: number) => {
+    if (!selection) return;
+    const moved = {
+      x0: selection.x0 + dx,
+      x1: selection.x1 + dx,
+      y0: selection.y0 + dy,
+      y1: selection.y1 + dy,
+    };
+    // Keep selected pixels on the canvas; shifts of the whole frame wrap separately.
+    if (
+      moved.x0 < 0 ||
+      moved.y0 < 0 ||
+      moved.x1 >= active.width ||
+      moved.y1 >= 11
+    )
+      return;
+    updateFrame((f) =>
+      pasteBlock(
+        clearRect(f, selection),
+        extractRect(f, selection),
+        moved.x0,
+        moved.y0,
+        true,
+      ),
+    );
+    setSelection(moved);
+  };
+  const usedColumns = enabledMessages(project.messages).reduce(
+    (n, m) => n + byteColumns(m),
+    0,
+  );
+  const textBudget =
+    Math.max(
+      0,
+      MAX_BYTE_COLUMNS -
+        enabledMessages(project.messages)
+          .filter((m) => m.id !== active.id)
+          .reduce((n, m) => n + byteColumns(m), 0),
+    ) * 8;
+  const changeDraft = (text: string) => {
+    if (text === draft) return;
+    setDraft(text);
+    setRendering(true);
+  };
+  const textSymbols = useSymbolText(draft, changeDraft, textBudget, face, active.id);
+  const stampSymbols = useSymbolText(stampText, setStampText, textBudget, stampFace, active.id);
+  const symbolPopover = wide && roomForSymbols;
+  const closeSymbolPopover = useCallback((restoreFocus: boolean) => {
+    setPanel(null);
+    if (restoreFocus) symbolAnchor.current?.focus();
+  }, []);
+  const prepareStamp = async (
+    text: string,
+    font: string,
+    kind: PendingStamp["kind"],
+  ) => {
+    setRendering(true);
+    setError(null);
+    try {
+      const bitmap = await platform.renderText(text, font);
+      if (bitmap.missing.length) {
+        setError(`Some characters have no glyph: ${bitmap.missing.join(" ")}.`);
+      }
+      if (bitmap.rows.some((row) => row.some(Boolean))) {
+        setPendingStamp({
+          bitmap,
+          point: { x: selection?.x0 ?? 0, y: selection?.y0 ?? 0 },
+          kind,
+        });
+      }
+      setPanel(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRendering(false);
+    }
+  };
+  const placeStamp = ({ x, y }: Point) => {
+    if (!pendingStamp) return;
+    const { bitmap } = pendingStamp;
+    update(active.id, (m) => {
+      const width = m.mode === "animation"
+        ? BADGE_WIDTH
+        : Math.min(MAX_BITMAP_WIDTH, Math.max(m.width, x + bitmap.width));
+      return {
+        ...m,
+        text: undefined,
+        width,
+        frames: m.frames.map((f, i) =>
+          i === frameIndex
+            ? resizeFrame(stamp(f, bitmap.rows, x, y), width)
+            : resizeFrame(f, width),
+        ),
+      };
+    });
+    setPendingStamp(null);
+  };
+  const openDrawingPanel = (next: Panel) => {
+    pauseFrame();
+    setPendingStamp(null);
+    setPanel(next);
+  };
+  const insertImage = async () => {
+    setBusy("file");
+    setError(null);
+    try {
+      const data = await platform.pickImage();
+      if (!data) return;
+      const image = await importImage(data, {
+        threshold,
+        asFrames: active.mode === "animation",
+      });
+      update(active.id, (m) => ({
+        ...m,
+        text: undefined,
+        frames: image.frames,
+        width: image.width,
+      }));
+      setFrameIndex(0);
+      setSelection(null);
+      setPanel(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const scan = async () => {
+    if (operation.current) return;
+    operation.current = true;
+    setBusy("scan");
+    setError(null);
+    setStatus(null);
+    setSent(false);
+    try {
+      const found = await platform.bleScan(6000);
+      setBadges(found);
+      setBadgeId((id) =>
+        found.some((b) => b.id === id) ? id : (found[0]?.id ?? null),
+      );
+      if (!found.length)
+        setStatus("No badge found; unplug its USB cable and press button 1.");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      operation.current = false;
+      setBusy(null);
+    }
+  };
+  const send = async () => {
+    if (!badgeId || operation.current) return;
+    const live = enabledMessages(project.messages);
+    if (!live.length) {
+      setError("Enable at least one slot before sending.");
+      return;
+    }
+    operation.current = true;
+    setBusy("send");
+    setError(null);
+    setProgress(null);
+    setSent(false);
+    setStatus(null);
+    try {
+      await flush();
+      await platform.sendBle(
+        live.map((m) => ({
+          frames: m.mode === "animation" ? m.frames : [m.frames[0]],
+          mode: m.mode,
+          speed: m.speed,
+          blink: m.blink,
+          ants: m.ants,
+        })),
+        project.brightness,
+        badgeId,
+      );
+      setSent(true);
+      setStatus("The badge accepted the transfer.");
+    } catch (e) {
+      const err = e as { message?: string };
+      setError(err?.message ?? String(e));
+    } finally {
+      operation.current = false;
+      setBusy(null);
+      setProgress(null);
+    }
+  };
+  const file = async (
+    action: "import" | "export",
+    kind: "project" | "message" = "project",
+  ) => {
+    if (operation.current) return;
+    operation.current = true;
+    setBusy("file");
+    setPanel(null);
+    setError(null);
+    try {
+      if (action === "import") {
+        const json = platform.importDocument
+          ? await platform.importDocument(kind)
+          : (await platform.pickOpen(kind))?.text;
+        if (json) {
+          if (kind === "message") {
+            if (project.messages.length >= MAX_MESSAGES)
+              throw new Error("A project holds eight slots.");
+            const message = { ...parseMessage(json), id: newMessage().id };
+            commit((p) => ({ ...p, messages: [...p.messages, message] }));
+            go(message.text ? "text" : "draw", message);
+          } else {
+            replace(parseProject(json));
+            setSelectedId(null);
+            setRoute("project");
+          }
+          setSent(false);
+        }
+      } else {
+        const json =
+          kind === "message"
+            ? serializeMessage(active)
+            : serializeProject(project);
+        if (platform.exportDocument) await platform.exportDocument(json, kind);
+        else {
+          const path = await platform.pickSave(
+            kind,
+            kind === "message" ? "Slot.badgemsg" : "BlinkenBadge.badge",
+          );
+          if (path) await platform.writeText(path, json, kind);
+        }
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      operation.current = false;
+      setBusy(null);
+    }
+  };
+  const sheetTitle: Record<Exclude<Panel, null>, string> = {
+    project: "Project",
+    privacy: "Privacy",
+    add: "Add Slot",
+    font: "Font",
+    motion: "Motion",
+    message: "Slot",
+    frames: "Frame",
+    selection: "Selection",
+    transform: "Transform",
+    stamp: "Stamp Text",
+    symbols: "Badge Symbols",
+    "stamp-symbols": "Badge Symbols",
+    "canvas-symbols": "Badge Symbols",
+    image: "Import Image",
+    color: "LED Color",
+    "confirm-mode": "Change Mode",
+    "confirm-new": "New Project",
+    "confirm-import": "Import Project",
+    "confirm-delete": "Delete Slot",
+    convert: "Edit Pixels",
+  };
+  const disabled = !!busy || rendering || !ready;
+  const done = () => {
+    if (!disabled) {
+      setDraft(active.text?.value ?? "");
+      go("project");
+    }
+  };
+  const workspace = (
+    <>
+      {route === "text" && (
+        <main className="mobile-content mobile-compose" data-symbol-popover={symbolPopover}>
+          <div className="mobile-preview-panel">
+            <MiniBadge
+              message={active}
+              step={playing ? step : undefined}
+              playing={playing}
+              brightness={project.brightness}
+            />
+            <div className="mobile-preview-actions">
+              <button
+                className="mobile-preview-play"
+                aria-label={playing ? "Pause Preview" : "Play Preview"}
+                onClick={() => {
+                  setPlaying((p) => !p);
+                  setStep(0);
+                }}
+              >
+                {playing ? "Pause" : "Play"}
+              </button>
+              <button
+                className="mobile-text-send"
+                disabled={rendering}
+                onClick={sendScreen}
+              >
+                Send to Badge
+              </button>
+            </div>
+          </div>
+          <div className="mobile-text-editor">
+            <div className="mobile-text-editor-heading">
+              <label className="mobile-input-label" htmlFor="mobile-message-text">
+                Message
+              </label>
+              {symbols.length > 0 && (
+                <button
+                  ref={symbolAnchor}
+                  className="mobile-insert-symbol"
+                  aria-expanded={panel === "symbols"}
+                  aria-haspopup="dialog"
+                  aria-controls={panel === "symbols" && symbolPopover ? "mobile-text-symbols" : undefined}
+                  onPointerDown={() => {
+                    if (document.activeElement === textSymbols.input.current)
+                      textSymbols.rememberRange();
+                  }}
+                  onClick={() => setPanel(panel === "symbols" ? null : "symbols")}
+                >
+                  Insert Symbol
+                </button>
+              )}
+            </div>
+            <textarea
+              key={active.id}
+              ref={textSymbols.input}
+              id="mobile-message-text"
+              rows={3}
+              value={draft}
+              maxLength={8192}
+              onChange={(e) => textSymbols.type(e.target.value)}
+              onSelect={textSymbols.rememberRange}
+              onBlur={textSymbols.rememberRange}
+              spellCheck={false}
+              autoCapitalize="off"
+            />
+            <div className="mobile-text-options">
+              <button
+                aria-label={`Font: ${fonts.find((f) => f.id === face)?.name ?? "Choose"}`}
+                disabled={rendering}
+                onClick={() => setPanel("font")}
+              >
+                <small>Font</small>
+                <span>{fonts.find((f) => f.id === face)?.name ?? "Choose"}</span>
+              </button>
+              <button
+                disabled={rendering}
+                onClick={() => setPanel("motion")}
+                aria-label={`Motion: ${MODE_LABELS[active.mode]}`}
+              >
+                <small>Motion</small>
+                <span>{MODE_LABELS[active.mode]}</span>
+              </button>
+              {textSymbols.canUndo && (
+                <button data-keep-symbols onClick={textSymbols.undo}>Undo Symbol</button>
+              )}
+              {!wide && (
+                <button
+                  aria-label="Slot Options"
+                  disabled={rendering}
+                  onClick={() => setPanel("message")}
+                >
+                  •••
+                </button>
+              )}
+            </div>
+            {panel === "symbols" && symbolPopover && (
+              <SymbolPopover
+                anchor={symbolAnchor}
+                chars={symbols}
+                led={led}
+                onPick={textSymbols.pick}
+                onClose={closeSymbolPopover}
+              />
+            )}
+            <div className="mobile-text-meta">
+              <span>{measureText(draft, face)} / {textBudget} px</span>
+              {panel !== "symbols" || symbolPopover ? (
+                <span className="mobile-render-status" role="status">
+                  {textSymbols.notice || (rendering ? "Updating Preview" : "")}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </main>
+      )}
+      {route === "draw" && (
+        <DrawingWorkspace
+          key={active.id}
+          message={active}
+          current={frameIndex}
+          playing={playing}
+          step={step}
+          brightness={project.brightness}
+          focus={drawingFocus}
+          onFocus={setDrawingFocus}
+          onion={onion}
+          onOnion={setOnion}
+          onPlay={toggleDrawingPlayback}
+          onSelect={selectFrame}
+          onDuplicate={duplicateFrame}
+          onBlank={addBlankFrame}
+          onSpeed={(speed) => update(active.id, (m) => ({ ...m, speed }))}
+          onMotion={() => openDrawingPanel("motion")}
+          onPreview={() => go("preview")}
+          onFrames={() => openDrawingPanel("frames")}
+          onTransform={() => openDrawingPanel("transform")}
+          onSend={wide ? undefined : sendScreen}
+          onCopy={() => copySelection()}
+          onCut={() => copySelection(true)}
+          onPaste={pasteSelection}
+          hasClipboard={!!clipboard}
+          onSelectionTools={() => openDrawingPanel("selection")}
+          onSelectionDone={() => {
+            setSelection(null);
+            setTool("pencil");
+          }}
+          tools={
+            <>
+              {TOOL_CHOICES.map(([id, label]) => (
+                <button
+                  key={id}
+                  aria-pressed={!pendingStamp && tool === id}
+                  disabled={playing}
+                  onClick={() => {
+                    setPendingStamp(null);
+                    setTool(id);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                aria-haspopup="dialog"
+                disabled={playing}
+                onClick={() => openDrawingPanel("stamp")}
+              >
+                Text
+              </button>
+              <button
+                aria-haspopup="dialog"
+                disabled={playing || !symbols.length}
+                onClick={() => openDrawingPanel("canvas-symbols")}
+              >
+                Symbols
+              </button>
+              <button
+                aria-haspopup="dialog"
+                disabled={playing}
+                onClick={() => openDrawingPanel("image")}
+              >
+                Image
+              </button>
+            </>
+          }
+          settings={
+            tool === "pencil" || tool === "eraser" || tool === "line" ? (
+              <label className="studio-brush-size">
+                Brush
+                <select
+                  aria-label="Brush Size"
+                  disabled={playing}
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                >
+                  {[1, 2, 3].map((n) => (
+                    <option key={n} value={n}>{n} px</option>
+                  ))}
+                </select>
+              </label>
+            ) : tool === "rect" || tool === "ellipse" ? (
+              <button
+                aria-pressed={filled}
+                disabled={playing}
+                onClick={() => setFilled((f) => !f)}
+              >
+                Filled
+              </button>
+            ) : null
+          }
+          undo={editor.undo}
+          redo={editor.redo}
+          canUndo={editor.canUndo && !playing}
+          canRedo={editor.canRedo && !playing}
+          canvas={{
+            tool,
+            brushSize,
+            filled,
+            selection,
+            placement: pendingStamp
+              ? {
+                  rows: pendingStamp.bitmap.rows,
+                  point: pendingStamp.point,
+                  kind: pendingStamp.kind,
+                  onMove: (point) => setPendingStamp((s) => s && { ...s, point }),
+                  onCommit: placeStamp,
+                  onCancel: () => setPendingStamp(null),
+                }
+              : undefined,
+            onSelectionChange: setSelection,
+            onChange: (next, record) => {
+              if (!playing)
+                update(
+                  active.id,
+                  (m) => ({
+                    ...m,
+                    text: undefined,
+                    frames: m.frames.map((f, i) =>
+                      i === frameIndex ? next : f,
+                    ),
+                  }),
+                  record,
+                );
+            },
+          }}
+        />
+      )}
+      {route === "preview" && (
+        <MobilePreview
+          project={project}
+          selectedId={active.id}
+          initialScope={previewStart.scope}
+          initialStep={previewStart.step}
+          onSend={sendScreen}
+          onEdit={(message, frame) => {
+            go(message.text ? "text" : "draw", message);
+            setFrameIndex(frame);
+          }}
+        />
+      )}
+      {route === "send" && (
+        <SendWorkspace
+          project={project}
+          badges={badges}
+          badgeId={badgeId}
+          busy={busy}
+          progress={progress}
+          status={status}
+          sent={sent}
+          usedColumns={usedColumns}
+          onScan={() => void scan()}
+          onSend={() => void send()}
+          onChoose={(id) => {
+            setBadgeId(id);
+            setStatus(null);
+            setSent(false);
+          }}
+          onEnabled={(id, enabled) => {
+            update(id, (m) => ({ ...m, enabled }));
+            setSent(false);
+            setStatus(null);
+          }}
+          onBrightness={(brightness) => {
+            commit((p) => ({ ...p, brightness }));
+            setSent(false);
+            setStatus(null);
+          }}
+          onDone={done}
+        />
+      )}
+    </>
+  );
+  return (
+    <div
+      className="mobile-app"
+      data-layout={wide ? "wide" : undefined}
+      data-drawing-focus={route === "draw" && drawingFocus ? "true" : undefined}
+      ref={root}
+      style={
+        {
+          "--mobile-led": LED_COLORS[led],
+          "--mobile-onion": ledPalette(led).onion,
+        } as React.CSSProperties
+      }
+    >
+      <div className="mobile-screen">
+        <header className="mobile-header">
+          {wide ? (
+            <>
+              <div className="studio-brand">
+                <span className="studio-led-dot" aria-hidden="true" />
+                <h1>BlinkenBadge</h1>
+                <span role="status">{saveState}</span>
+              </div>
+              {(route === "preview" || route === "send") && (
+                <h2 className="studio-route-title">
+                  {route === "preview" ? "Preview" : "Send to Badge"}
+                </h2>
+              )}
+              <div className="studio-header-actions">
+                {(route === "preview" || route === "send") && (
+                  <button disabled={disabled} onClick={done}>
+                    Done
+                  </button>
+                )}
+                <button
+                  aria-label="Undo"
+                  disabled={!editor.canUndo || playing || disabled}
+                  onClick={editor.undo}
+                >
+                  <StudioIcon name="undo" />
+                  <span>Undo</span>
+                </button>
+                <button
+                  aria-label="Redo"
+                  disabled={!editor.canRedo || playing || disabled}
+                  onClick={editor.redo}
+                >
+                  <StudioIcon name="redo" />
+                  <span>Redo</span>
+                </button>
+                <button
+                  aria-label="Project Options"
+                  disabled={disabled}
+                  onClick={() => setPanel("project")}
+                >
+                  <StudioIcon name="more" />
+                  <span>Project</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {route !== "project" && (
+                <button
+                  className="mobile-back"
+                  aria-label="Back to Slots"
+                  disabled={disabled}
+                  onClick={done}
+                >
+                  ‹
+                </button>
+              )}
+              <div
+                className={
+                  route === "project"
+                    ? "mobile-project-title"
+                    : "mobile-editor-title"
+                }
+              >
+                <h1>
+                  {route === "project"
+                    ? "Badge Slots"
+                    : route === "preview"
+                      ? "Preview"
+                      : route === "send"
+                        ? "Send to Badge"
+                        : active.name}
+                </h1>
+                {route === "project" && (
+                  <span role="status">
+                    {project.messages.length} of {MAX_MESSAGES} Slots ·{" "}
+                    {saveState}
+                  </span>
+                )}
+              </div>
+              {route === "project" ? (
+                <button
+                  className="studio-labeled"
+                  aria-label="Project Options"
+                  disabled={disabled}
+                  onClick={() => setPanel("project")}
+                >
+                  <StudioIcon name="more" />
+                  <small>Menu</small>
+                </button>
+              ) : route === "draw" ? (
+                <div className="studio-header-history">
+                  <button
+                    aria-label="Undo"
+                    disabled={!editor.canUndo || playing}
+                    onClick={editor.undo}
+                  >
+                    <StudioIcon name="undo" />
+                  </button>
+                  <button
+                    aria-label="Redo"
+                    disabled={!editor.canRedo || playing}
+                    onClick={editor.redo}
+                  >
+                    <StudioIcon name="redo" />
+                  </button>
+                  <button
+                    aria-label="Slot Options"
+                    disabled={disabled}
+                    onClick={() => openDrawingPanel("message")}
+                  >
+                    <StudioIcon name="more" />
+                  </button>
+                </div>
+              ) : route !== "send" ? (
+                <button disabled={disabled} onClick={done}>
+                  Done
+                </button>
+              ) : (
+                <span className="mobile-header-spacer" />
+              )}
+            </>
+          )}
+        </header>
+        {error && (
+          <div className="mobile-notice" role="alert">
+            <span>{error}</span>
+            <button aria-label="Dismiss Error" onClick={() => setError(null)}>
+              ×
+            </button>
+          </div>
+        )}
+        {!ready ? (
+          <main className="mobile-content" role="status">
+            Opening your draft...
+          </main>
+        ) : wide ? (
+          <>
+            <div className="studio-shell">
+              <aside className="studio-sidebar" aria-label="Badge Slots">
+                <div className="studio-sidebar-heading">
+                  <h2>Slots</h2>
+                  <span>
+                    {project.messages.length} / {MAX_MESSAGES}
+                  </span>
+                </div>
+                <ol className="studio-slot-list">
+                  {project.messages.map((m, index) => (
+                    <li
+                      key={m.id}
+                      className="studio-slot-row"
+                      data-selected={m.id === active.id ? "true" : undefined}
+                      data-off={m.enabled === false ? "true" : undefined}
+                    >
+                      <button
+                        className="studio-slot-select"
+                        aria-current={m.id === active.id ? "true" : undefined}
+                        disabled={!!busy || rendering}
+                        onClick={() => {
+                          if (
+                            m.id !== active.id ||
+                            (route !== "text" && route !== "draw")
+                          )
+                            go(m.text ? "text" : "draw", m);
+                        }}
+                      >
+                        <span className="studio-slot-number">{index + 1}</span>
+                        <span className="studio-slot-text">
+                          <strong>{m.name}</strong>
+                          <small>
+                            {slotKind(m)}
+                            {m.enabled === false ? " · Off" : ""}
+                          </small>
+                        </span>
+                        <MiniBadge
+                          message={m}
+                          brightness={project.brightness}
+                        />
+                      </button>
+                      <button
+                        className="studio-slot-menu"
+                        aria-label={`Slot ${index + 1} Options`}
+                        disabled={!!busy}
+                        onClick={() => {
+                          setSelectedId(m.id);
+                          setPanel("message");
+                        }}
+                      >
+                        <StudioIcon name="more" />
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+                <button
+                  className="studio-add-slot"
+                  disabled={disabled || project.messages.length >= MAX_MESSAGES}
+                  onClick={() => setPanel("add")}
+                >
+                  <StudioIcon name="plus" />
+                  Add Slot
+                </button>
+              </aside>
+              <section
+                className="studio-main"
+                data-route={route}
+                aria-label={
+                  route === "preview"
+                    ? "Preview"
+                    : route === "send"
+                      ? "Send to Badge"
+                      : `Slot ${project.messages.indexOf(active) + 1}`
+                }
+              >
+                {(route === "text" || route === "draw") && (
+                  <div className="studio-pane-title">
+                    <div>
+                      <h2>{active.name}</h2>
+                      <span>
+                        Slot {project.messages.indexOf(active) + 1} ·{" "}
+                        {slotKind(active)} · {MODE_LABELS[active.mode]}
+                      </span>
+                    </div>
+                    <button
+                      aria-label="Slot Options"
+                      disabled={disabled}
+                      onClick={() => setPanel("message")}
+                    >
+                      Slot Options
+                    </button>
+                  </div>
+                )}
+                {workspace}
+              </section>
+            </div>
+            <footer className="studio-statusbar">
+              <div
+                className="studio-capacity"
+                title={`${usedColumns} of ${MAX_BYTE_COLUMNS} byte columns used.`}
+                data-full={usedColumns > MAX_BYTE_COLUMNS ? "true" : undefined}
+              >
+                <span>
+                  Badge Memory{" "}
+                  {Math.round((usedColumns / MAX_BYTE_COLUMNS) * 100)}%
+                </span>
+                <progress
+                  aria-label="Badge Memory Used"
+                  max={MAX_BYTE_COLUMNS}
+                  value={Math.min(usedColumns, MAX_BYTE_COLUMNS)}
+                />
+              </div>
+              <button
+                className="studio-led-choice"
+                aria-label={`LED Color: ${led[0].toUpperCase() + led.slice(1)}`}
+                onClick={() => setPanel("color")}
+              >
+                <span className="studio-led-dot" aria-hidden="true" />
+                {led[0].toUpperCase() + led.slice(1)}
+              </button>
+              <button
+                disabled={disabled}
+                onClick={() => go("preview", active, "sequence")}
+              >
+                Preview All
+              </button>
+              <button
+                className="mobile-primary"
+                disabled={disabled}
+                onClick={sendScreen}
+              >
+                <StudioIcon name="send" />
+                Send to Badge
+              </button>
+            </footer>
+          </>
+        ) : (
+          <>
+            {route === "project" && (
+              <>
+                <main className="mobile-content mobile-message-list">
+                  {project.messages.map((m, index) => (
+                    <article className="mobile-slot-card" key={m.id}>
+                      <button
+                        className="mobile-message-card"
+                        onClick={() => go(m.text ? "text" : "draw", m)}
+                        disabled={!!busy}
+                      >
+                        <div>
+                          <strong>{m.name}</strong>{" "}
+                          <span>
+                            {m.text
+                              ? "Text"
+                              : m.mode === "animation"
+                                ? "Animation"
+                                : "Drawing"}{" "}
+                            · Slot {index + 1}
+                            {m.mode === "animation"
+                              ? ` · ${m.frames.length} ${m.frames.length === 1 ? "Frame" : "Frames"}`
+                              : ""}
+                            {m.enabled === false ? " · Off" : ""}
+                          </span>
+                        </div>
+                        <MiniBadge
+                          message={m}
+                          brightness={project.brightness}
+                        />
+                        {m.text?.value === "" && (
+                          <span className="mobile-empty-hint">
+                            Tap to add text.
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        className="mobile-slot-menu"
+                        aria-label={`Slot ${index + 1} Options`}
+                        disabled={!!busy}
+                        onClick={() => {
+                          setSelectedId(m.id);
+                          setPanel("message");
+                        }}
+                      >
+                        <StudioIcon name="more" />
+                      </button>
+                    </article>
+                  ))}
+                </main>
+                <footer className="mobile-footer">
+                  <button
+                    disabled={
+                      disabled || project.messages.length >= MAX_MESSAGES
+                    }
+                    onClick={() => setPanel("add")}
+                  >
+                    + Add
+                  </button>
+                  <button disabled={disabled} onClick={() => go("preview")}>
+                    Preview
+                  </button>
+                  <button
+                    className="mobile-primary"
+                    disabled={disabled}
+                    onClick={() => {
+                      sendScreen();
+                    }}
+                  >
+                    Send
+                  </button>
+                </footer>
+              </>
+            )}
+            {workspace}
+          </>
+        )}
+      </div>
+      {panel && !(panel === "symbols" && symbolPopover) && (
+        <Sheet
+          title={sheetTitle[panel]}
+          closeLabel={
+            panel === "stamp-symbols" ? "Back"
+            : panel.startsWith("confirm-") || panel === "convert"
+              ? "Cancel"
+              : "Done"
+          }
+          onClose={() => setPanel(panel === "stamp-symbols" ? "stamp" : null)}
+          busy={!!busy || (rendering && panel !== "symbols")}
+        >
+          <div className="mobile-sheet-actions">
+            {panel === "symbols" && (
+              <>
+                <MiniBadge message={active} brightness={project.brightness} />
+                <SymbolGrid chars={symbols} led={led} onPick={textSymbols.pick} />
+                <div className="mobile-symbol-feedback">
+                  <button disabled={!textSymbols.canUndo} onClick={textSymbols.undo}>Undo Symbol</button>
+                  <span className="mobile-render-status" role="status">{textSymbols.notice}</span>
+                </div>
+              </>
+            )}
+            {panel === "canvas-symbols" && (
+              <SymbolGrid
+                chars={symbols}
+                led={led}
+                onPick={(char) => {
+                  if (!rendering) void prepareStamp(char, stampFace, "Symbol");
+                }}
+              />
+            )}
+            {panel === "stamp-symbols" && (
+              <>
+                <div className="mobile-symbol-draft" aria-label="Stamp text draft">{stampText}</div>
+                <SymbolGrid chars={symbols} led={led} onPick={stampSymbols.pick} />
+                <div className="mobile-symbol-feedback">
+                  <button disabled={!stampSymbols.canUndo} onClick={stampSymbols.undo}>Undo Symbol</button>
+                  <span className="mobile-render-status" role="status">{stampSymbols.notice}</span>
+                </div>
+              </>
+            )}
+            {panel === "project" && (
+              <>
+                <p>
+                  Edits save automatically on this device. Export a project to
+                  keep a separate copy or move it to another device.
+                </p>
+                <button onClick={() => setPanel("confirm-new")}>
+                  New Project
+                </button>
+                <button onClick={() => setPanel("confirm-import")}>
+                  Import Project
+                </button>
+                <button onClick={() => void file("export")}>
+                  Export Project
+                </button>
+                <button
+                  disabled={project.messages.length >= MAX_MESSAGES}
+                  onClick={() => void file("import", "message")}
+                >
+                  Import Slot
+                </button>
+                <button disabled={!editor.canUndo} onClick={editor.undo}>
+                  Undo
+                </button>
+                <button disabled={!editor.canRedo} onClick={editor.redo}>
+                  Redo
+                </button>
+                <button onClick={() => setPanel("color")}>LED Color</button>
+                <button onClick={() => setPanel("privacy")}>Privacy</button>
+              </>
+            )}
+            {panel === "privacy" && <PrivacyNotice />}
+            {panel === "frames" && (
+              <>
+                <p>Frame {frameIndex + 1} of {active.frames.length}</p>
+                <div className="mobile-control-grid">
+                  <button
+                    className="mobile-danger"
+                    disabled={active.frames.length <= 1}
+                    onClick={() => {
+                      update(active.id, (m) => ({
+                        ...m,
+                        frames: m.frames.filter((_, i) => i !== frameIndex),
+                      }));
+                      setFrameIndex(Math.max(0, frameIndex - 1));
+                      setSelection(null);
+                      setPanel(null);
+                    }}
+                  >
+                    Delete Frame
+                  </button>
+                  <button
+                    disabled={frameIndex === 0}
+                    onClick={() =>
+                      updateFrame(() =>
+                        cloneFrame(active.frames[frameIndex - 1]),
+                      )
+                    }
+                  >
+                    Copy Previous
+                  </button>
+                  <button
+                    disabled={frameIndex === 0}
+                    onClick={() => moveFrame(frameIndex - 1)}
+                  >
+                    Move Frame Left
+                  </button>
+                  <button
+                    disabled={frameIndex >= active.frames.length - 1}
+                    onClick={() => moveFrame(frameIndex + 1)}
+                  >
+                    Move Frame Right
+                  </button>
+                </div>
+                <p>
+                  {active.frames.length} of {ANIMATION_MAX_FRAMES} frames used.
+                  {active.frames.length === ANIMATION_MAX_FRAMES
+                    ? " Delete a frame to add another."
+                    : " Duplicate keeps this artwork; New starts a blank frame."}
+                </p>
+              </>
+            )}
+            {panel === "selection" && (
+              <>
+                <p>
+                  Drag to select pixels, then drag inside the selection to move
+                  them.
+                </p>
+                <button
+                  onClick={() => {
+                    setSelection({
+                      x0: 0,
+                      y0: 0,
+                      x1: active.width - 1,
+                      y1: 10,
+                    });
+                    setPanel(null);
+                  }}
+                >
+                  Select All
+                </button>
+                <div className="mobile-control-grid">
+                  <button
+                    disabled={!selection}
+                    onClick={() => {
+                      updateFrame((f) => clearRect(f, selection!));
+                      setPanel(null);
+                    }}
+                  >
+                    Erase Selection
+                  </button>
+                  <button disabled={!selection} onClick={() => nudge(-1, 0)}>
+                    Nudge Left
+                  </button>
+                  <button disabled={!selection} onClick={() => nudge(1, 0)}>
+                    Nudge Right
+                  </button>
+                  <button disabled={!selection} onClick={() => nudge(0, -1)}>
+                    Nudge Up
+                  </button>
+                  <button disabled={!selection} onClick={() => nudge(0, 1)}>
+                    Nudge Down
+                  </button>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelection(null);
+                    setPanel(null);
+                  }}
+                >
+                  Deselect
+                </button>
+              </>
+            )}
+            {panel === "transform" && (
+              <>
+                {active.mode !== "animation" && (
+                  <label>
+                    Width
+                    <input
+                      aria-label="Canvas Width"
+                      type="number"
+                      min="8"
+                      max={MAX_BITMAP_WIDTH}
+                      value={active.width}
+                      onChange={(e) => {
+                        const width = Math.max(
+                          8,
+                          Math.min(
+                            MAX_BITMAP_WIDTH,
+                            Math.round(Number(e.target.value)),
+                          ),
+                        );
+                        if (Number.isFinite(width))
+                          update(active.id, (m) => ({
+                            ...m,
+                            text: undefined,
+                            width,
+                            frames: m.frames.map((f) => resizeFrame(f, width)),
+                          }));
+                      }}
+                    />
+                  </label>
+                )}
+                <div className="mobile-control-grid">
+                  <button onClick={() => updateFrame(invert)}>Invert</button>
+                  <button onClick={() => updateFrame(flipH)}>
+                    Flip Horizontal
+                  </button>
+                  <button onClick={() => updateFrame(flipV)}>
+                    Flip Vertical
+                  </button>
+                  <button
+                    onClick={() => {
+                      clearFrame();
+                      setPanel(null);
+                    }}
+                  >
+                    Clear Frame
+                  </button>
+                  <button onClick={() => updateFrame((f) => shift(f, -1, 0))}>
+                    Shift Left
+                  </button>
+                  <button onClick={() => updateFrame((f) => shift(f, 1, 0))}>
+                    Shift Right
+                  </button>
+                  <button onClick={() => updateFrame((f) => shift(f, 0, -1))}>
+                    Shift Up
+                  </button>
+                  <button onClick={() => updateFrame((f) => shift(f, 0, 1))}>
+                    Shift Down
+                  </button>
+                </div>
+              </>
+            )}
+            {panel === "stamp" && (
+              <>
+                <label>
+                  Text
+                  <textarea
+                    ref={stampSymbols.input}
+                    data-initial-focus
+                    aria-label="Stamp Text"
+                    rows={2}
+                    value={stampText}
+                    onChange={(e) => stampSymbols.type(e.target.value)}
+                    onSelect={stampSymbols.rememberRange}
+                    onBlur={stampSymbols.rememberRange}
+                  />
+                </label>
+                <label>
+                  Pixel Font
+                  <select
+                    aria-label="Stamp Font"
+                    value={stampFace}
+                    onChange={(e) => setStampFace(e.target.value)}
+                  >
+                    {fonts.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span>
+                  {measureText(stampText, stampFace)} /{" "}
+                  {active.mode === "animation" ? BADGE_WIDTH : textBudget} px
+                  {active.mode === "animation" ? " · Cropped to Frame" : ""}
+                </span>
+                {symbols.length > 0 && (
+                  <button
+                    aria-haspopup="dialog"
+                    onPointerDown={() => {
+                      if (document.activeElement === stampSymbols.input.current)
+                        stampSymbols.rememberRange();
+                    }}
+                    onClick={() => setPanel("stamp-symbols")}
+                  >
+                    Insert Symbol
+                  </button>
+                )}
+                {stampSymbols.canUndo && (
+                  <button onClick={stampSymbols.undo}>Undo Symbol</button>
+                )}
+                <button
+                  className="mobile-primary"
+                  disabled={!stampText || rendering}
+                  onClick={() => void prepareStamp(stampText, stampFace, "Text")}
+                >
+                  Position Text
+                </button>
+              </>
+            )}
+            {panel === "image" && (
+              <>
+                <p>
+                  {active.mode === "animation"
+                    ? "A horizontal image strip replaces this slot with up to eight frames."
+                    : "The image replaces this slot and scales to eleven pixels tall."}
+                </p>
+                <label>
+                  Threshold
+                  <input
+                    type="range"
+                    min="0"
+                    max="255"
+                    value={threshold}
+                    onChange={(e) => setThreshold(Number(e.target.value))}
+                  />
+                </label>
+                <button
+                  className="mobile-primary"
+                  disabled={!!busy}
+                  onClick={() => void insertImage()}
+                >
+                  Choose Image
+                </button>
+              </>
+            )}
+            {panel === "color" && (
+              <>
+                {LED_ORDER.map((color) => (
+                  <button
+                    key={color}
+                    aria-pressed={led === color}
+                    onClick={() => {
+                      setLed(color);
+                      setPanel(null);
+                    }}
+                  >
+                    {color[0].toUpperCase() + color.slice(1)}
+                  </button>
+                ))}
+              </>
+            )}
+            {panel === "confirm-mode" && (
+              <>
+                <p>
+                  {pendingMode === "animation"
+                    ? "Animation crops each frame to 44 pixels wide."
+                    : "Leaving animation keeps only the first frame; Undo restores the others."}
+                </p>
+                <button
+                  onClick={() => {
+                    if (pendingMode) applyMode(pendingMode);
+                    setPanel(null);
+                    setPendingMode(null);
+                  }}
+                >
+                  Change Mode
+                </button>
+              </>
+            )}
+            {panel === "confirm-import" && (
+              <>
+                <p>The imported project replaces this device draft.</p>
+                <button onClick={() => void file("export")}>
+                  Export Current Draft
+                </button>
+                <button
+                  className="mobile-primary"
+                  onClick={() => void file("import")}
+                >
+                  Choose Project
+                </button>
+              </>
+            )}
+            {panel === "add" && (
+              <>
+                <p>
+                  Each slot holds text, a drawing, or an animation. The badge
+                  supports eight slots.
+                </p>
+                <button onClick={() => add("text")}>Text Message</button>
+                <p className="mobile-action-help">
+                  Type a message and choose a pixel font.
+                </p>
+                <button onClick={() => add("drawing")}>Pixel Drawing</button>
+                <p className="mobile-action-help">
+                  Draw a single image on the pixel display.
+                </p>
+                <button onClick={() => add("animation")}>Animation</button>
+                <p className="mobile-action-help">
+                  Create up to eight frames in this slot. Duplicate a frame to
+                  start the next.
+                </p>
+              </>
+            )}
+            {panel === "font" &&
+              fonts.map((f) => (
+                <FontChoice
+                  key={f.id}
+                  face={f}
+                  selected={face === f.id}
+                  onSelect={() => {
+                    forceTextRender.current = true;
+                    refreshFontChoice((value) => value + 1);
+                    setDraft((t) => fitText(t, textBudget, f.id));
+                    setFace(f.id);
+                    setPanel(null);
+                  }}
+                />
+              ))}
+            {panel === "motion" && (
+              <>
+                <label>
+                  Mode
+                  <select
+                    value={active.mode}
+                    onChange={(e) => mode(e.target.value as Mode)}
+                  >
+                    {MODES.map((m) => (
+                      <option key={m} value={m}>
+                        {MODE_LABELS[m]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {(route !== "draw" || active.mode !== "animation") && (
+                  <label>
+                    Speed
+                    <input
+                      type="range"
+                      min="1"
+                      max="8"
+                      value={active.speed}
+                      onChange={(e) =>
+                        update(active.id, (m) => ({
+                          ...m,
+                          speed: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                )}
+                <label className="mobile-check">
+                  <input
+                    type="checkbox"
+                    checked={active.blink}
+                    onChange={(e) =>
+                      update(active.id, (m) => ({
+                        ...m,
+                        blink: e.target.checked,
+                      }))
+                    }
+                  />
+                  Blink
+                </label>
+                <label className="mobile-check">
+                  <input
+                    type="checkbox"
+                    checked={active.ants}
+                    onChange={(e) =>
+                      update(active.id, (m) => ({
+                        ...m,
+                        ants: e.target.checked,
+                      }))
+                    }
+                  />
+                  Border
+                </label>
+              </>
+            )}
+            {panel === "message" && (
+              <>
+                <p>
+                  Slot {project.messages.indexOf(active) + 1} · {active.name}
+                </p>
+                <div className="mobile-control-grid">
+                  <button
+                    disabled={project.messages.length >= MAX_MESSAGES}
+                    onClick={() => {
+                      const copy = {
+                        ...active,
+                        id: newMessage("fixed").id,
+                        name: `${active.name} Copy`,
+                        frames: active.frames.map(cloneFrame),
+                      };
+                      commit((p) => ({
+                        ...p,
+                        messages: [...p.messages, copy],
+                      }));
+                      go(copy.text ? "text" : "draw", copy);
+                    }}
+                  >
+                    Duplicate Slot
+                  </button>
+                  <button
+                    className="mobile-danger"
+                    onClick={() => setPanel("confirm-delete")}
+                  >
+                    Delete Slot
+                  </button>
+                </div>
+                <button
+                  disabled={project.messages[0].id === active.id}
+                  onClick={() => moveSlot(-1)}
+                >
+                  Move Slot Up
+                </button>
+                <button
+                  disabled={
+                    project.messages[project.messages.length - 1].id ===
+                    active.id
+                  }
+                  onClick={() => moveSlot(1)}
+                >
+                  Move Slot Down
+                </button>
+                <button onClick={() => void file("export", "message")}>
+                  Export Slot
+                </button>
+                <label>
+                  Name
+                  <input
+                    value={active.name}
+                    maxLength={100}
+                    onChange={(e) =>
+                      update(active.id, (m) => ({ ...m, name: e.target.value }))
+                    }
+                  />
+                </label>
+                <label className="mobile-check">
+                  <input
+                    type="checkbox"
+                    checked={active.enabled}
+                    onChange={(e) =>
+                      update(active.id, (m) => ({
+                        ...m,
+                        enabled: e.target.checked,
+                      }))
+                    }
+                  />
+                  Enable Slot
+                </label>
+                {active.text && (
+                  <button onClick={() => setPanel("convert")}>
+                    Edit Pixels
+                  </button>
+                )}
+              </>
+            )}
+            {panel === "convert" && (
+              <>
+                <p>
+                  Text becomes editable pixels; Undo restores the text source.
+                </p>
+                <button
+                  className="mobile-primary"
+                  onClick={() => {
+                    update(active.id, (m) => ({ ...m, text: undefined }));
+                    setPanel(null);
+                    if (route === "project") go("draw");
+                    else {
+                      history.replaceState(
+                        {
+                          mobileRoute: "draw",
+                          mobileDepth: navigationDepth.current,
+                        },
+                        "",
+                      );
+                      setRoute("draw");
+                    }
+                  }}
+                >
+                  Edit Pixels
+                </button>
+              </>
+            )}
+            {panel === "confirm-new" && (
+              <>
+                <p>Export a copy before replacing this device draft.</p>
+                <button onClick={() => void file("export")}>
+                  Export Project
+                </button>
+                <button
+                  onClick={() => {
+                    replace(emptyMobileProject());
+                    setSelectedId(null);
+                    go("project");
+                  }}
+                >
+                  Start New
+                </button>
+              </>
+            )}
+            {panel === "confirm-delete" && (
+              <>
+                <p>
+                  Delete “{active.name}” from Slot{" "}
+                  {project.messages.indexOf(active) + 1}?
+                  {project.messages.length === 1
+                    ? " A blank slot will take its place."
+                    : ""}{" "}
+                  Use Undo in Project Options to restore it.
+                </p>
+                <button
+                  className="mobile-danger"
+                  onClick={() => {
+                    commit((p) => {
+                      const remaining = p.messages.filter(
+                        (m) => m.id !== active.id,
+                      );
+                      return {
+                        ...p,
+                        messages: remaining.length
+                          ? remaining
+                          : emptyMobileProject().messages,
+                      };
+                    });
+                    go("project");
+                    setSelectedId(null);
+                  }}
+                >
+                  Delete Slot
+                </button>
+              </>
+            )}
+          </div>
+        </Sheet>
+      )}
+    </div>
+  );
+}

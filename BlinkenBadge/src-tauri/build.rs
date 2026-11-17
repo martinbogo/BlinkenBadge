@@ -9,6 +9,8 @@ fn main() {
             "send_to_badge",
             "send_to_badge_usb",
             "pick_open",
+            "mobile_import",
+            "mobile_export",
             "pick_save",
             "read_text",
             "write_text",
