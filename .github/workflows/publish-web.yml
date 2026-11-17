@@ -87,4 +87,17 @@ jobs:
             exit 0
           fi
           git commit -m "Publish BlinkenBadge web, ${GITHUB_REF_NAME}, $(date -u +%Y-%m-%d)"
-          git push origin master
+          # Badge Studio's workflow pushes to the same repository, into its
+          # own badgestudio/ folder. If it lands between our checkout and our
+          # push, the push is rejected; the two never touch the same files,
+          # so rebasing onto the new tip and trying again is always safe.
+          for attempt in 1 2 3 4 5; do
+            if git push origin master; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt); rebasing onto the site's latest."
+            sleep $((attempt * 5))
+            git pull --rebase origin master
+          done
+          echo "::error::Could not push to martinbogo.github.io after 5 attempts."
+          exit 1
