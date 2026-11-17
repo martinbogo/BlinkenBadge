@@ -17,7 +17,7 @@ import { serializeProject } from "./doc";
 
 const host = vi.hoisted(() => ({
   kind: "web",
-  openExternal: vi.fn(async () => {}),
+  openSupport: vi.fn(async () => {}),
   fontMetrics: vi.fn(async () => []),
   renderText: vi.fn(),
   usbFind: vi.fn(async () => null),

@@ -1588,7 +1588,7 @@ export default function App() {
           rel="noopener noreferrer"
           onClick={(e) => {
             e.preventDefault();
-            void platform.openExternal(SUPPORT_URL);
+            void platform.openSupport();
           }}
         >
           Support BlinkenBadge on Ko-fi

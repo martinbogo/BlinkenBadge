@@ -257,6 +257,23 @@ async fn ble_scan(_app: AppHandle, timeout_ms: Option<u64>) -> Result<Vec<ble::B
         .map_err(|e| e.to_string())
 }
 
+/// The Ko-fi page, in the system browser.
+///
+/// The address is fixed here rather than passed in, so the page can open
+/// this one URL and nothing else. The opener plugin would have done the same
+/// with an allow-list, but brought in zbus, whose helper crates are flagged
+/// unmaintained; `open` hands the URL to the OS (xdg-open on Linux).
+const SUPPORT_URL: &str = "https://ko-fi.com/martinbogo";
+
+#[tauri::command]
+fn open_support() -> Result<(), String> {
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    return open::that_detached(SUPPORT_URL).map_err(|e| e.to_string());
+    // The store builds do not show the link at all.
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    Err("Not available here.".into())
+}
+
 /// Whether a badge is plugged in over USB. Cheap enough to poll.
 #[tauri::command]
 fn usb_find() -> Result<Option<usb::UsbInfo>, String> {
@@ -356,7 +373,6 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             render_text,
             font_metrics,
@@ -378,6 +394,7 @@ pub fn run() {
             files::recent_clear,
             take_pending_files,
             confirm_exit,
+            open_support,
         ]);
     #[cfg(target_os = "android")]
     let builder = builder.plugin(ble::init());

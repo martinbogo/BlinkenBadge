@@ -19,7 +19,8 @@
  * treat a tip to the developer as a purchase that has to go through their own
  * billing, and an outside link for one is a rejection.
  *
- * The desktop opens it through the opener plugin, whose capability allows
- * this one URL and nothing else (src-tauri/capabilities/default.json).
+ * The desktop opens it with the open_support command, which has the same
+ * address built in and takes no argument, so the page cannot open anything
+ * else through it.
  */
 export const SUPPORT_URL = "https://ko-fi.com/martinbogo";

@@ -9,10 +9,6 @@
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-set-title",
-    {
-      "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://ko-fi.com/martinbogo" }]
-    },
     "editor-commands"
   ]
 }
