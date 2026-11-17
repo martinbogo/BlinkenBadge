@@ -29,7 +29,8 @@ Linux builds target glibc 2.35 or newer (Ubuntu 22.04+). The `.deb` and `.rpm` p
 
 ## Web Client
 
-A web build of the editor runs in Chromium browsers via WebHID and Web Bluetooth.
+A web build of the editor runs in Chromium browsers via WebHID and Web Bluetooth,
+at https://martinbogo.github.io/blinkenbadge/.
 
 Supported on Android via Chrome (Web Bluetooth only). Not supported on iOS due to lack of WebHID and Web Bluetooth in WebKit.
 
@@ -52,6 +53,16 @@ Supported on Android via Chrome (Web Bluetooth only). Not supported on iOS due t
    npm run build:web
    ```
 2. Deploy the contents of `BlinkenBadge/dist-web/` to an HTTPS web server. WebHID and Web Bluetooth require a secure context.
+
+The hosted copy is published by `.github/workflows/publish-web.yml`. Push a tag
+starting with `web-v` on a commit that is on `main`, and the workflow tests,
+builds and copies `dist-web/` into `blinkenbadge/` of the martinbogo.github.io
+repository:
+
+```bash
+git tag web-v1 origin/main
+git push origin web-v1
+```
 
 See [web/README.md](web/README.md) for implementation details.
 
