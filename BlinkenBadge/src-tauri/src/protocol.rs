@@ -144,18 +144,44 @@ pub struct Stamp {
 }
 
 impl Stamp {
+    /// The current time in UTC. Local time would need a time zone database,
+    /// which is not worth a dependency for a value nothing reads.
     pub fn now() -> Self {
-        use chrono::{Datelike, Local, Timelike};
-        let t = Local::now();
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        Self::from_unix(secs)
+    }
+
+    pub fn from_unix(secs: u64) -> Self {
+        let days = (secs / 86_400) as i64;
+        let rest = secs % 86_400;
+        let (year, month, day) = civil_from_days(days);
         Stamp {
-            year: (t.year() % 100) as u8,
-            month: t.month() as u8,
-            day: t.day() as u8,
-            hour: t.hour() as u8,
-            minute: t.minute() as u8,
-            second: t.second() as u8,
+            year: year.rem_euclid(100) as u8,
+            month: month as u8,
+            day: day as u8,
+            hour: (rest / 3600) as u8,
+            minute: (rest / 60 % 60) as u8,
+            second: (rest % 60) as u8,
         }
     }
+}
+
+/// Days since 1970-01-01 to a proleptic Gregorian (year, month, day).
+/// Howard Hinnant's `civil_from_days`.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (year, month, day)
 }
 
 /// Serialize up to 8 messages into the byte stream written to characteristic 0xFEE1.
@@ -522,5 +548,31 @@ mod text_length_tests {
             HEADER_SIZE + MAX_BYTE_COLUMNS * BADGE_HEIGHT
         );
         println!("split across 8 messages: {each} characters each");
+    }
+}
+
+#[cfg(test)]
+mod stamp_tests {
+    use super::*;
+
+    fn ymdhms(s: Stamp) -> [u8; 6] {
+        [s.year, s.month, s.day, s.hour, s.minute, s.second]
+    }
+
+    #[test]
+    fn converts_unix_seconds_to_a_utc_calendar_date() {
+        assert_eq!(ymdhms(Stamp::from_unix(0)), [70, 1, 1, 0, 0, 0]);
+        // 2000-02-29 23:59:59, a leap day in a century leap year.
+        assert_eq!(
+            ymdhms(Stamp::from_unix(951_868_799)),
+            [0, 2, 29, 23, 59, 59]
+        );
+        // 2026-11-17 06:10:04.
+        assert_eq!(
+            ymdhms(Stamp::from_unix(1_794_895_804)),
+            [26, 11, 17, 6, 10, 4]
+        );
+        // 2100-03-01 00:00:00, after a century year that is not a leap year.
+        assert_eq!(ymdhms(Stamp::from_unix(4_107_542_400)), [0, 3, 1, 0, 0, 0]);
     }
 }
