@@ -244,6 +244,25 @@ export default function App() {
     [active, project, apply],
   );
 
+  // Speed is stored per message, as the badge stores it. While the preview
+  // plays every message, though, changing only the one being edited is close
+  // to invisible: an animation split across eight slots would change for one
+  // eighth of the loop. So the slider follows what is on screen and sets the
+  // speed of every message.
+  const setSpeed = useCallback(
+    (speed: number) => {
+      if (scope === "message") {
+        updateActive((m) => ({ ...m, speed }));
+        return;
+      }
+      commit({
+        ...project,
+        messages: project.messages.map((m) => ({ ...m, speed })),
+      });
+    },
+    [scope, updateActive, project, commit],
+  );
+
   const updateFrame = useCallback(
     (fn: (f: Frame) => Frame, history = true) => {
       updateActive(
@@ -1243,12 +1262,7 @@ export default function App() {
                     min={1}
                     max={8}
                     value={active.speed}
-                    onChange={(e) =>
-                      updateActive((m) => ({
-                        ...m,
-                        speed: Number(e.target.value),
-                      }))
-                    }
+                    onChange={(e) => setSpeed(Number(e.target.value))}
                   />
                   <span className="mu tabular">{active.speed}</span>
                 </label>
