@@ -246,6 +246,30 @@ describe("editor regressions", () => {
     ).toContain("Save this project to a file");
   });
 
+  it("sets one message's speed, or every message's while previewing them all", async () => {
+    const user = userEvent.setup();
+    host.pickSave.mockResolvedValue("speeds.badge");
+    renderApp();
+    await user.click(screen.getByRole("button", { name: "Add message" }));
+    const saved = async () => {
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(host.writeText).toHaveBeenCalled());
+      const calls = host.writeText.mock.calls as unknown as [string, string][];
+      const json = calls[calls.length - 1][1];
+      host.writeText.mockClear();
+      return (
+        JSON.parse(json) as { messages: { speed: number }[] }
+      ).messages.map((m) => m.speed);
+    };
+
+    fireEvent.change(screen.getByRole("slider", { name: /Speed/ }), { target: { value: "7" } });
+    expect(await saved()).toEqual([4, 7]);
+
+    await user.click(screen.getByRole("checkbox", { name: "All messages" }));
+    fireEvent.change(screen.getByRole("slider", { name: /Speed/ }), { target: { value: "2" } });
+    expect(await saved()).toEqual([2, 2]);
+  });
+
   it("ignores a corrupt LED preference instead of crashing", () => {
     localStorage.setItem("badge-led", "unknown-color");
     renderApp();
