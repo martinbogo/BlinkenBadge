@@ -3,6 +3,11 @@ name: Dependabot auto-merge
 # Dependabot's pull requests merge themselves once the required checks pass,
 # so security fixes and routine updates do not wait for a person. Major
 # version updates are left for review: they are the ones that change APIs.
+#
+# Dependabot writes each update's kind into its commit message
+# ("update-type: version-update:semver-minor"), which is all that
+# dependabot/fetch-metadata would read. Reading it directly keeps that action
+# off this repository's list of allowed actions.
 
 on: pull_request
 
@@ -18,10 +23,16 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - id: meta
-        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
-      - if: steps.meta.outputs.update-type != 'version-update:semver-major'
-        env:
+      - env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ github.token }}
-        run: gh pr merge --auto --squash "$PR_URL"
+        run: |
+          set -euo pipefail
+          messages=$(gh pr view "$PR_URL" --json commits --jq '.commits[].messageBody')
+          if ! grep -q 'update-type: version-update:' <<< "$messages"; then
+            echo "No update metadata in the commit message. Left for review."
+          elif grep -q 'update-type: version-update:semver-major' <<< "$messages"; then
+            echo "Includes a major version update. Left for review."
+          else
+            gh pr merge --auto --squash "$PR_URL"
+          fi
