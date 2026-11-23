@@ -178,7 +178,7 @@ body {
 
 .slot-list li {
   display: grid;
-  grid-template-columns: auto 18px 1fr auto auto;
+  grid-template-columns: auto 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
   padding: 7px 8px;
@@ -273,6 +273,21 @@ body {
 .slot-index {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* Name over mode, so the name gets the row's width. Side by side, the mode
+   label and the remove button left about 30px, and "ECG 1" became "EC...". */
+.slot-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.slot-label .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .slot-name {
@@ -516,9 +531,12 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* White in both themes: the light theme's dark text and the modal's red text
+   were both unreadable on this fill. */
 button.primary {
   background: var(--accent-dim);
   border-color: var(--accent);
+  color: #fff;
 }
 
 button.primary:hover:not(:disabled) {
@@ -1203,7 +1221,6 @@ button.active {
 
 .modal-actions button.primary {
   border-color: var(--accent);
-  color: var(--accent);
 }
 
 .modal-actions button.danger {

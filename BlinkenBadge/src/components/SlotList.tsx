@@ -190,8 +190,12 @@ export default function SlotList({
             {m.enabled === false ? "○" : "●"}
           </button>
           <span className="slot-index">{i + 1}</span>
-          <span className="slot-name">{m.name}</span>
-          <span className="muted small">{MODE_LABELS[m.mode]}</span>
+          <span className="slot-label">
+            <span className="slot-name" title={m.name}>
+              {m.name}
+            </span>
+            <span className="muted small">{MODE_LABELS[m.mode]}</span>
+          </span>
           {messages.length > 1 && (
             <button
               className="ghost"
