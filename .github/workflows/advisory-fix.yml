@@ -1,0 +1,144 @@
+name: Advisory fix
+
+# When the audit in Checks finds an advisory that a newer compatible version
+# already fixes, update just the affected packages and merge the result once CI
+# passes, instead of failing every night until someone does it by hand.
+#
+# Dependabot does not cover this. It reads GitHub's advisory database, which
+# picks up RustSec advisories late or not at all, and its version updates never
+# touch transitive Cargo dependencies, which is where most advisories land.
+#
+# An advisory with no fixed version (an unmaintained crate, say) cannot be
+# fixed this way. The job then fails and lists what is left, and the change
+# needs a person: replacing the crate, or a dated exception in deny.toml.
+
+on:
+  schedule:
+    # Ahead of the nightly Checks run at 14:17, so a fix can land first.
+    - cron: "41 12 * * *"
+  workflow_run:
+    # And straight after any failed Checks run on main, for advisories that
+    # appear between the two.
+    workflows: [Checks]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: advisory-fix
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      # Pull requests opened with this job's token do not start other
+      # workflows, so the required checks are started by hand on the branch.
+      actions: write
+    env:
+      BRANCH: automation/advisory-fix
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: BlinkenBadge/src-tauri
+          shared-key: dependency-audit
+          save-if: false
+      - name: Install advisory scanner
+        run: cargo install --locked cargo-deny --version 0.20.2
+
+      - name: Update packages with fixed advisories
+        id: fix
+        run: |
+          set -euo pipefail
+          fixed=()
+
+          cd BlinkenBadge
+          if ! npm audit --audit-level=low > /dev/null; then
+            npm audit fix --package-lock-only
+            fixed+=("npm packages")
+          fi
+
+          cd src-tauri
+          report="$RUNNER_TEMP/deny.json"
+          if ! cargo deny --locked --format json check advisories 2> "$report"; then
+            jq -r '
+              select(.type == "diagnostic" and .fields.severity == "error")
+              | .fields.graphs[]?.Krate | "\(.name)@\(.version)"' "$report" \
+              | sort -u > "$RUNNER_TEMP/crates.txt"
+            while read -r crate; do
+              cargo update --package "$crate"
+              fixed+=("$crate")
+            done < "$RUNNER_TEMP/crates.txt"
+          fi
+
+          if [ ${#fixed[@]} -eq 0 ]; then
+            echo "No advisories."
+          else
+            printf -- '- %s\n' "${fixed[@]}" > "$RUNNER_TEMP/fixed.md"
+          fi
+
+      - name: Confirm the audit passes
+        run: |
+          set -euo pipefail
+          status=0
+          (cd BlinkenBadge && npm audit --audit-level=low) || status=1
+          (cd BlinkenBadge/src-tauri && cargo deny --locked check advisories) || status=1
+          if [ $status -ne 0 ]; then
+            echo "::error::Some advisories have no compatible fixed version and need a manual change."
+          fi
+          exit $status
+
+      - name: Open the fix and merge it once CI passes
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          {
+            echo "Update packages with security advisories"
+            echo
+            cat "$RUNNER_TEMP/fixed.md"
+          } > "$RUNNER_TEMP/message.txt"
+          git commit --all --file "$RUNNER_TEMP/message.txt"
+
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c http.extraheader="AUTHORIZATION: basic $auth" \
+            push --force origin "HEAD:refs/heads/$BRANCH"
+
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            {
+              echo "The dependency audit found advisories with fixed versions. This updates the affected packages to the newest compatible release:"
+              echo
+              cat "$RUNNER_TEMP/fixed.md"
+              echo
+              echo "Opened by the Advisory fix workflow. It merges itself once the required checks pass."
+            } > "$RUNNER_TEMP/body.md"
+            gh pr create --base main --head "$BRANCH" \
+              --title "Update packages with security advisories" \
+              --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+          gh workflow run checks.yml --ref "$BRANCH"
+          gh workflow run security.yml --ref "$BRANCH"
+          gh pr merge "$BRANCH" --auto --squash --delete-branch
